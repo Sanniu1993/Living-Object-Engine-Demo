@@ -1,0 +1,14 @@
+.env
+memory.json
+qa_report.json
+translations/*.txt
+translations/**/*.txt
+__pycache__/
+*.pyc
+
+# 环境 / IDE / 系统
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store

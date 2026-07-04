@@ -1,0 +1,143 @@
+"""
+llm_client.py
+
+模型调用层。刻意做成一个薄接口，屏蔽具体调用哪个provider/哪个模型。
+
+设计原则：
+- 上层代码（memory_extractor / translator / qa）永远只调用 LLMClient.complete()
+  或 LLMClient.complete_json()，不知道也不关心背后是OpenAI、OpenRouter还是别的。
+- 换模型/换provider，只改这一个文件 + .env 里的配置，不改任何业务逻辑代码。
+- 现在只实现 OpenAI 官方API，但接口形状已经预留了切换空间。
+
+如果以后要换成OpenRouter或Azure，只需要新增一个类实现同样的
+`complete` / `complete_json` 方法，然后在 get_client() 里切换即可。
+"""
+
+import os
+import json
+from typing import Optional
+from openai import OpenAI
+
+
+class LLMClient:
+    """
+    所有Workflow步骤都通过这个接口调用模型。
+    不要在业务代码里直接 import openai —— 统一走这里。
+    """
+
+    def complete(
+        self, system: str, user: str, temperature: float = 0.3, max_tokens: Optional[int] = None
+    ) -> str:
+        """返回纯文本响应。max_tokens为None时用provider默认值。"""
+        raise NotImplementedError
+
+    def complete_json(
+        self, system: str, user: str, temperature: float = 0.2, max_tokens: Optional[int] = None
+    ) -> dict:
+        """
+        返回解析后的JSON dict。
+        要求调用方在system prompt里明确要求"只输出JSON，不要markdown代码块"。
+        max_tokens可用于收紧输出长度，避免便宜模型发散到把JSON撑爆。
+        """
+        raise NotImplementedError
+
+
+class OpenAIClient(LLMClient):
+    """
+    DeepSeek的API是OpenAI兼容格式，所以复用这一个类，
+    只是换一下 base_url / api_key / 默认模型名。
+    """
+
+    def __init__(
+        self,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        # 模型名做成配置项，不硬编码在业务逻辑里。
+        # 默认值只是一个当前存在的模型，随时可以在 .env 里覆盖。
+        self.model = model or os.environ.get("LLM_MODEL", "gpt-5.5")
+        key = api_key or os.environ.get("OPENAI_API_KEY")
+        if not key:
+            key_name = "DEEPSEEK_API_KEY" if base_url else "OPENAI_API_KEY"
+            raise RuntimeError(
+                f"未找到 {key_name}。请复制 .env.example 为 .env 并填入你的key。"
+            )
+        self.client = OpenAI(api_key=key, base_url=base_url)
+
+    def complete(
+        self, system: str, user: str, temperature: float = 0.3, max_tokens: Optional[int] = None
+    ) -> str:
+        kwargs = {
+            "model": self.model,
+            "temperature": temperature,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        resp = self.client.chat.completions.create(**kwargs)
+        return resp.choices[0].message.content or ""
+
+    def complete_json(
+        self, system: str, user: str, temperature: float = 0.2, max_tokens: Optional[int] = None
+    ) -> dict:
+        raw = self.complete(system, user, temperature=temperature, max_tokens=max_tokens)
+        return _safe_parse_json(raw)
+
+
+def _safe_parse_json(raw: str) -> dict:
+    """
+    模型偶尔会包一层```json代码块，这里做一次清理再解析。
+    解析失败时抛出异常并把原始内容带出来，方便调试，而不是静默返回空dict——
+    静默失败会让Memory悄悄丢数据，这比报错更危险。
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.startswith("json"):
+            text = text[4:]
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"模型返回内容无法解析为JSON。\n原始返回：\n{raw}\n\n错误：{e}"
+        )
+
+
+def _build_client(provider: str, model: Optional[str]) -> LLMClient:
+    provider = provider.lower()
+    if provider == "openai":
+        # 官方OpenAI（ChatGPT）。model显式传入，避免落到全局LLM_MODEL（那是deepseek）。
+        return OpenAIClient(model=model or "gpt-4o")
+    if provider == "deepseek":
+        # DeepSeek便宜、API兼容OpenAI格式，调试阶段用它跑翻译/抽取。
+        return OpenAIClient(
+            model=model or "deepseek-chat",
+            api_key=os.environ.get("DEEPSEEK_API_KEY"),
+            base_url="https://api.deepseek.com",
+        )
+    raise ValueError(
+        f"未知的 LLM_PROVIDER: {provider}。当前MVP只实现了 'openai' 和 'deepseek'。"
+    )
+
+
+def get_client(role: Optional[str] = None) -> LLMClient:
+    """
+    唯一的入口点。以后要换provider，改这里/`.env`即可，业务代码不需要动。
+
+    支持按角色分别配置模型，实现"翻译用便宜的deepseek、QA用更强的模型当判官"：
+    - role=None（默认，翻译/抽取用）：读 LLM_PROVIDER / LLM_MODEL。
+    - role="qa"：先读 QA_LLM_PROVIDER / QA_LLM_MODEL；
+      若 QA_LLM_PROVIDER 没配，则回退到默认那套（即QA也用deepseek，行为同以前）。
+    """
+    prefix = f"{role.upper()}_" if role else ""
+    provider = (
+        os.environ.get(f"{prefix}LLM_PROVIDER")
+        or os.environ.get("LLM_PROVIDER", "openai")
+    )
+    model = os.environ.get(f"{prefix}LLM_MODEL")
+    return _build_client(provider, model)

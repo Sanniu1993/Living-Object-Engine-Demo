@@ -1,0 +1,134 @@
+{
+  "per_chapter": [
+    {
+      "chapter": 1,
+      "title": "001 团藏，你根部姓志村啊？",
+      "no_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      },
+      "with_memory": {
+        "passed": false,
+        "issue_count": 7,
+        "issues": [
+          {
+            "type": "称呼不一致",
+            "description": "Memory中猿飞日斩的英文译名为Hiruzen Sarutobi，但译文中多次使用Sarutobi Hiruzen",
+            "severity": "high"
+          },
+          {
+            "type": "称呼不一致",
+            "description": "Memory中志村团藏的英文译名为Shimura Danzo，但译文中多次使用Danzo Shimura",
+            "severity": "high"
+          },
+          {
+            "type": "称呼不一致",
+            "description": "Memory中千手扉间的英文译名为Tobirama Senju，但译文中使用Tobirama Senju（一致），但出现Senju Tobirama（不一致）",
+            "severity": "medium"
+          },
+          {
+            "type": "称呼不一致",
+            "description": "Memory中柱间大人的英文译名为Hashirama Senju，但译文中使用Hashirama Senju（一致），但出现Senju Hashirama（不一致）",
+            "severity": "medium"
+          },
+          {
+            "type": "称呼不一致",
+            "description": "Memory中旗木朔茂的英文译名为Sakumo Hatake，但译文中使用Sakumo Hatake（一致），但出现Hatake Sakumo（不一致）",
+            "severity": "medium"
+          },
+          {
+            "type": "称呼不一致",
+            "description": "Memory中六道仙人的英文译名为Sage of Six Paths，但译文中使用Sage of Six Paths（一致），但出现Six Paths Sage（不一致）",
+            "severity": "medium"
+          },
+          {
+            "type": "称呼不一致",
+            "description": "Memory中大蛇丸的英文译名为Orochimaru，但译文中使用Orochimaru（一致），但出现Orochimaru（无问题）",
+            "severity": "low"
+          }
+        ]
+      }
+    },
+    {
+      "chapter": 2,
+      "title": "002 治村思绪，最稳妥的方式是做大蛋糕",
+      "no_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      },
+      "with_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      }
+    },
+    {
+      "chapter": 3,
+      "title": "003 倒反天罡的大蛇丸，要给老头子加把火",
+      "no_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      },
+      "with_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      }
+    },
+    {
+      "chapter": 4,
+      "title": "004 没受伤吧？超雄火影初现端倪",
+      "no_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      },
+      "with_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      }
+    },
+    {
+      "chapter": 5,
+      "title": "005 火影的手腕，日向日差入暗部，改革的风声",
+      "no_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      },
+      "with_memory": {
+        "passed": true,
+        "issue_count": 0,
+        "issues": []
+      }
+    }
+  ],
+  "summary": {
+    "no_memory": {
+      "total_chapters": 5,
+      "errored_chapters": 0,
+      "passed_chapters": 5,
+      "total_issues": 0,
+      "by_severity": {
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      }
+    },
+    "with_memory": {
+      "total_chapters": 5,
+      "errored_chapters": 0,
+      "passed_chapters": 4,
+      "total_issues": 7,
+      "by_severity": {
+        "high": 2,
+        "medium": 4,
+        "low": 1
+      }
+    }
+  }
+}
