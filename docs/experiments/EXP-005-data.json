@@ -31,8 +31,13 @@
       "gpt5mini": {
         "issues": [
           {
+            "type": "设定冲突",
+            "description": "译文将猿飞新之助描述为旗木朔茂的“eldest son/his eldest son”，与Memory中猿飞新之助为猿飞日斩之子（非旗木朔茂之子）相冲突。",
+            "severity": "high"
+          },
+          {
             "type": "术语不一致",
-            "description": "Memory中“木叶警卫部”既定英文为“Konoha Military Police Force”（或“Military Police Force”），但译文使用了“Konoha Military Police”，与Memory中既定译法不一致。",
+            "description": "将“木叶警卫部”译为“Konoha Military Police”，但Memory/glossary中既定英文为“Konoha Military Police Force”。",
             "severity": "medium"
           }
         ],
@@ -49,7 +54,7 @@
         "issues": [
           {
             "type": "术语不一致",
-            "description": "“土流壁”在Memory中已记录为 \"Earth Release: Earth Flow Wall\"，译文处使用了 \"Earth Flow Wall\"（省略了 \"Earth Release:\" 前缀），与Memory中既有的英文译法不一致。",
+            "description": "Memory 中“土流壁”既定英译为 “Earth Release: Earth Flow Wall”，但译文多处只写作“Earth Flow Wall”或“earthen wall”，未保持与 Memory 的既定术语一致",
             "severity": "medium"
           }
         ],
@@ -95,12 +100,17 @@
       "issues": [
         {
           "type": "称呼不一致",
-          "description": "译文在章节开头使用了 'Sarutobi Hiruzen'，而Memory中确立的译名为 'Hiruzen Sarutobi'；文中后续又出现 'Hiruzen Sarutobi'，存在同一人物称呼前后不一致的问题。",
+          "description": "猿飞日斩在译文中先用“Sarutobi Hiruzen”，随后又用“Hiruzen Sarutobi”，与Memory中确立的“Hiruzen Sarutobi”不一致。",
+          "severity": "high"
+        },
+        {
+          "type": "称呼不一致",
+          "description": "大蛇丸在一句中被称为“Orochi”，截断了完整名“Orochimaru”，与Memory中确立的“Orochimaru”不符。",
           "severity": "high"
         },
         {
           "type": "术语不一致",
-          "description": "译文多处将“火影辅佐”翻作 'Hokage Assistant'，但Memory中该术语已确立为 'Hokage Advisor'，两者不一致。",
+          "description": "“火影辅佐”在译文中被翻为“Hokage Assistant”，但Memory中规定的英译为“Hokage Advisor”。",
           "severity": "medium"
         }
       ],

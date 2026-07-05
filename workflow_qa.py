@@ -57,9 +57,13 @@ Memory里的key是中文原文（如"猿飞日斩"），译文本来就该译成
 - type字段只能是"术语不一致""称呼不一致""设定冲突"三者之一，不得填别的值。
 
 以下属于正常小说写法，不算不一致，不要报（避免误报）：
-- 用角色的名或简称称呼，而非每次都用全名（如只写 "Asuma"/"Kakashi"，不必是 "Asuma Sarutobi"/"Kakashi Hatake"）。
+- 用全名里的一部分（名 或 姓）来称呼，而非每次都用全名（如只写 "Asuma"/"Kakashi"，
+  不必是 "Asuma Sarutobi"/"Kakashi Hatake"）——这是正常的。
 - 用称谓/头衔指代人物（如把 Hiruzen Sarutobi 称作 "the Third Hokage"、"Lord Hokage"）。
 - 仅大小写或单复数差异（如 "Uchiha clan" vs "Uchiha Clan"）。
+
+注意区分：把一个完整的单名截断或改写，不算"简称"，属于不一致，要报
+（如 "Orochimaru" 写成 "Orochi"、"Hiruzen" 写成 "Hiru"）。
 只有出现"实质冲突"才算不一致：拼写不同、姓名顺序颠倒、用了完全不同的词，或漏词/改词导致术语变样
 （如 glossary 是 "Military Police Force" 却写成 "Military Police"）。
 

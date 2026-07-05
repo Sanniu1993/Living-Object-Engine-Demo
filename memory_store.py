@@ -27,6 +27,10 @@ from typing import Any, Optional
 
 MEMORY_SCHEMA_VERSION = 1
 
+# 长篇成本控制：喂进每章 prompt 的上下文上界。Memory 本身仍完整保存，只是不全量塞进 prompt。
+CONTEXT_SUMMARY_CHARS = 600   # 滚动摘要只送最近这么多字
+CONTEXT_RECENT_EVENTS = 20    # QA 视图里 timeline/state_log 只送最近这么多条
+
 
 def _empty_memory() -> dict:
     return {
@@ -38,6 +42,7 @@ def _empty_memory() -> dict:
         "glossary": {},        # 术语 -> 译文
         "timeline": [],        # 追加写入的事件列表，永不删除/覆盖
         "state_log": [],       # 全局State变化记录，跨entity类型共用同一结构
+        "extracted_chapters": [],  # 已抽取过的章号，用于幂等/断点续跑，防止重复append
     }
 
 
@@ -77,6 +82,36 @@ class MemoryStore:
         """
         return json.dumps(self.data, ensure_ascii=False, indent=2)
 
+    def _capped_summary(self) -> str:
+        """滚动摘要只送最近一段，避免它无限膨胀后每章重发（长篇成本大头之一）。"""
+        s = self.data.get("summary", "")
+        if len(s) > CONTEXT_SUMMARY_CHARS:
+            return "…" + s[-CONTEXT_SUMMARY_CHARS:]
+        return s
+
+    def compact_context_string(self) -> str:
+        """
+        供 Extractor / Translator 使用的**有界**上下文。
+
+        它们不需要完整历史——只需要"已有哪些实体、术语怎么译、最近讲到哪"。所以这里只给：
+        当前属性（丢掉 state_history）+ 完整 glossary（一致性靠它，且实体数会饱和）+ 封顶摘要，
+        并**完全丢掉 timeline / state_log**（那两块每章无限增长，是 O(N^2) 成本的元凶）。
+
+        效果：每章上下文大小基本恒定、不随章数涨——长篇翻译能低成本跑下去的关键。
+        （完整历史仍在 memory.json 里，只是不塞进每章的 prompt。QA 需要历史时另走 relevant_context_string。）
+        """
+        def attrs_only(store: dict) -> dict:
+            return {k: v.get("attributes", {}) for k, v in store.items()}
+
+        view = {
+            "summary": self._capped_summary(),
+            "characters": attrs_only(self.data["characters"]),
+            "locations": attrs_only(self.data["locations"]),
+            "organizations": attrs_only(self.data["organizations"]),
+            "glossary": self.data["glossary"],
+        }
+        return json.dumps(view, ensure_ascii=False, indent=2)
+
     def relevant_context_string(self, chapter_text: str) -> str:
         """
         只挑出当前章节实际涉及的Memory条目，供QA使用。
@@ -88,6 +123,9 @@ class MemoryStore:
         判断依据是"中文key/entity名是否出现在本章中文原文里"，因为Memory的key就是中文，
         而QA拿到的译文是英文、不好直接匹配。这样过滤是刻意从严：本章没出现的历史条目，
         对本章的一致性检查本来也用不上。
+
+        长篇加固：主角每章都出现，其 timeline/state_log 会一直累积，光靠"是否相关"过滤仍会涨。
+        所以再对 timeline / state_log 取**最近 N 条**（CONTEXT_RECENT_EVENTS），把 QA 输入也钉成有界。
         """
         def mentioned(name: str) -> bool:
             return bool(name) and name in chapter_text
@@ -101,13 +139,13 @@ class MemoryStore:
         timeline = [
             e for e in self.data["timeline"]
             if any(ent in relevant_entities for ent in e.get("involved_entities", []))
-        ]
+        ][-CONTEXT_RECENT_EVENTS:]
         state_log = [
             s for s in self.data["state_log"] if s.get("entity_id") in relevant_entities
-        ]
+        ][-CONTEXT_RECENT_EVENTS:]
 
         view = {
-            "summary": self.data.get("summary", ""),
+            "summary": self._capped_summary(),
             "characters": characters,
             "locations": locations,
             "organizations": organizations,
@@ -116,6 +154,18 @@ class MemoryStore:
             "state_log": state_log,
         }
         return json.dumps(view, ensure_ascii=False, indent=2)
+
+    # ---------- 断点续跑 / 幂等 ----------
+
+    def is_chapter_extracted(self, chapter: int) -> bool:
+        """该章是否已抽取进 Memory（用于跳过，避免重复 append 污染 state_log）。"""
+        return chapter in self.data.get("extracted_chapters", [])
+
+    def mark_chapter_extracted(self, chapter: int):
+        self.data.setdefault("extracted_chapters", [])
+        if chapter not in self.data["extracted_chapters"]:
+            self.data["extracted_chapters"].append(chapter)
+        self._save()
 
     # ---------- 写入：只增长，不覆盖 ----------
 

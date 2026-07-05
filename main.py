@@ -61,7 +61,12 @@ def main():
     parser.add_argument(
         "--revise",
         action="store_true",
-        help="定稿模式：QA发现问题后自动按清单修订译文，最多修2轮，输出定稿",
+        help="定稿模式：QA发现问题后自动按清单修订译文，输出定稿",
+    )
+    parser.add_argument(
+        "--recheck",
+        action="store_true",
+        help="修复后再用判官复查一遍（更稳但多花强判官调用）；默认关：QA→修复即收尾",
     )
     parser.add_argument(
         "--seed-glossary",
@@ -93,13 +98,21 @@ def main():
         print(f"\n对照实验完成。Memory: {args.memory_path} | 对比报告: {args.ab_report}")
         return
 
-    all_qa_reports = []
+    # 断点续跑：加载已有QA报告，跳过的章保留其结果；新章增量合并、每章落盘。
+    qa_by_chapter = _load_qa_report(args.qa_report)
 
     for chapter in chapters:
+        out_path = os.path.join(args.output_dir, f"chapter_{chapter.index:02d}.txt")
+
+        # 一章"已完成" = 已抽取进Memory 且 译文文件已存在。两者都满足才跳过。
+        if memory.is_chapter_extracted(chapter.index) and os.path.exists(out_path):
+            print(f"\n=== 第{chapter.index}章：{chapter.title}（已完成，跳过）===")
+            continue
+
         print(f"\n=== 第{chapter.index}章：{chapter.title} ===")
 
         print("  [提取] 更新Memory...")
-        extract_memory(client, memory, chapter.index, chapter.content)
+        extract_memory(client, memory, chapter.index, chapter.content)  # 幂等，重入不会重复append
 
         print("  [翻译] 仅消费Memory，不重新分析全文...")
         translated = translate_chapter(client, memory, chapter.index, chapter.content)
@@ -111,35 +124,47 @@ def main():
 
         if args.revise:
             translated, qa_result = _revise_until_clean(
-                client, qa_client, memory, chapter, translated, qa_result
+                client, qa_client, memory, chapter, translated, qa_result, args.recheck
             )
 
-        out_path = os.path.join(args.output_dir, f"chapter_{chapter.index:02d}.txt")
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(translated)
         print(f"      {'定稿' if args.revise else '译文'}已写入 {out_path}")
 
         qa_result["chapter"] = chapter.index
-        all_qa_reports.append(qa_result)
-
-    with open(args.qa_report, "w", encoding="utf-8") as f:
-        json.dump(all_qa_reports, f, ensure_ascii=False, indent=2)
+        qa_by_chapter[chapter.index] = qa_result
+        _write_qa_report(args.qa_report, qa_by_chapter)  # 增量落盘，中途崩不丢
 
     print(f"\n全部完成。Memory: {args.memory_path} | QA报告: {args.qa_report}")
 
 
-def _revise_until_clean(client, qa_client, memory, chapter, translated, qa_result):
-    """
-    定稿闭环，以"修复"收尾（角色分工：DeepSeek 翻译/修复，GPT-5 mini 判官）：
+def _load_qa_report(path: str) -> dict:
+    """加载已有QA报告为 {章号: 结果}，供断点续跑合并。文件不存在/损坏则返回空。"""
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return {r["chapter"]: r for r in json.load(f) if "chapter" in r}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return {}
 
-        译文 → QA找问题 → 修复 → 复查 → 最后修复（收尾，不再复查）
 
-    共 MAX_REVISE_ROUNDS 轮"QA→修复"。刻意让末轮修完不再复查——按需求，
-    末尾以修复动作收尾。任一轮 QA 判定通过（无问题）则提前结束。
-    入参 qa_result 是第一次 QA（在 main 里已跑）的结果。
-    返回 (最终译文, 最终QA结果)。
+def _write_qa_report(path: str, qa_by_chapter: dict):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump([qa_by_chapter[k] for k in sorted(qa_by_chapter)], f, ensure_ascii=False, indent=2)
+
+
+def _revise_until_clean(client, qa_client, memory, chapter, translated, qa_result, recheck=False):
     """
-    for rnd in range(1, MAX_REVISE_ROUNDS + 1):
+    定稿闭环，以"修复"收尾（角色分工：DeepSeek 翻译/修复，GPT-5 mini 判官）。
+
+    recheck=False（默认，省判官）：译文 → QA找问题 → 修复 → 收尾（不复查）。每章只 1 次判官调用。
+    recheck=True（更稳更贵）：译文 → QA → 修复 → 复查 → 最后修复（末轮不复查）。
+
+    任一轮 QA 判定通过（无问题）则提前结束。入参 qa_result 是第一次 QA（main 里已跑）的结果。
+    """
+    max_rounds = MAX_REVISE_ROUNDS if recheck else 1
+    for rnd in range(1, max_rounds + 1):
         issues = qa_result.get("issues", [])
         if qa_result.get("passed") or not issues:
             break
@@ -149,10 +174,10 @@ def _revise_until_clean(client, qa_client, memory, chapter, translated, qa_resul
             client, memory, chapter.index, translated, issues, chapter.content
         )
 
-        if rnd == MAX_REVISE_ROUNDS:
-            # 末轮：修完直接收尾，不再复查（用户指定流程以"修复"结束）。
-            print("      末轮修复完成，直接定稿（不再复查）")
-            qa_result["note"] = "末轮修复后未复查；上面列的是修复前发现的问题"
+        if rnd == max_rounds:
+            # 末轮：修完直接收尾，不再复查（省判官；末尾以修复动作结束）。
+            print("      修复完成，直接定稿（未复查）")
+            qa_result["note"] = "修复后未复查；上面列的是修复前发现的问题"
             break
 
         print(f"  [复查 第{rnd}轮] GPT-5 mini 重新QA...")

@@ -50,8 +50,12 @@ EXTRACTOR_SYSTEM_PROMPT = """你是一个小说内容结构化抽取器。
 
 
 def extract_memory(client: LLMClient, memory: MemoryStore, chapter_index: int, chapter_text: str):
+    # 幂等：这一章已抽取过就直接跳过，避免断点续跑时重复 append（state_log 重复计数）。
+    if memory.is_chapter_extracted(chapter_index):
+        return None
+
     user_prompt = f"""已有Memory（供你参考避免重复抽取已知信息）：
-{memory.as_context_string()}
+{memory.compact_context_string()}
 
 ---
 
@@ -85,4 +89,5 @@ def extract_memory(client: LLMClient, memory: MemoryStore, chapter_index: int, c
     if summary_update:
         memory.update_summary(summary_update)
 
+    memory.mark_chapter_extracted(chapter_index)
     return result

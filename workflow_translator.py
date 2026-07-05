@@ -45,7 +45,7 @@ def translate_chapter(
     chapter_text: str,
 ) -> str:
     memory_context = (
-        memory.as_context_string()
+        memory.compact_context_string()
         if memory is not None
         else "（无——本次不提供Memory，术语和人物译法请自行判断）"
     )
