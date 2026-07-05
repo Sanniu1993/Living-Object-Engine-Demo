@@ -130,29 +130,36 @@ def main():
 
 def _revise_until_clean(client, qa_client, memory, chapter, translated, qa_result):
     """
-    QA→修订→再QA的有界闭环，产出定稿。
+    定稿闭环，以"修复"收尾（角色分工：DeepSeek 翻译/修复，GPT-5 mini 判官）：
 
-    每轮：拿上一轮QA的问题清单去修订译文，再QA一次。QA通过、或没有可修的问题、
-    或达到MAX_REVISE_ROUNDS就停。返回(最终译文, 最终QA结果)。
-    因为QA判官（deepseek）有噪音，可能永远"不通过"，所以必须有轮数上限。
+        译文 → QA找问题 → 修复 → 复查 → 最后修复（收尾，不再复查）
+
+    共 MAX_REVISE_ROUNDS 轮"QA→修复"。刻意让末轮修完不再复查——按需求，
+    末尾以修复动作收尾。任一轮 QA 判定通过（无问题）则提前结束。
+    入参 qa_result 是第一次 QA（在 main 里已跑）的结果。
+    返回 (最终译文, 最终QA结果)。
     """
     for rnd in range(1, MAX_REVISE_ROUNDS + 1):
         issues = qa_result.get("issues", [])
         if qa_result.get("passed") or not issues:
             break
 
-        print(f"  [修订 第{rnd}轮] 按QA清单修 {len(issues)} 个问题...")
+        print(f"  [修复 第{rnd}轮] DeepSeek 按QA清单修 {len(issues)} 个问题...")
         translated = revise_translation(
             client, memory, chapter.index, translated, issues, chapter.content
         )
 
-        print(f"  [复检 第{rnd}轮] 重新QA...")
+        if rnd == MAX_REVISE_ROUNDS:
+            # 末轮：修完直接收尾，不再复查（用户指定流程以"修复"结束）。
+            print("      末轮修复完成，直接定稿（不再复查）")
+            qa_result["note"] = "末轮修复后未复查；上面列的是修复前发现的问题"
+            break
+
+        print(f"  [复查 第{rnd}轮] GPT-5 mini 重新QA...")
         qa_result = run_qa(qa_client, memory, chapter.index, translated, chapter.content)
         status = "通过" if qa_result.get("passed") else f"仍有 {len(qa_result.get('issues', []))} 个问题"
-        print(f"      复检结果：{status}")
+        print(f"      复查结果：{status}")
 
-    if not qa_result.get("passed") and qa_result.get("issues"):
-        print(f"      [提示] 修订{MAX_REVISE_ROUNDS}轮后仍有残留问题，已输出当前最好结果（残留见QA报告）")
     return translated, qa_result
 
 

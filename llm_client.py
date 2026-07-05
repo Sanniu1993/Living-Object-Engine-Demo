@@ -44,7 +44,7 @@ class LLMClient:
 
 class OpenAIClient(LLMClient):
     """
-    DeepSeek的API是OpenAI兼容格式，所以复用这一个类，
+    DeepSeek / AIHubMix 等的API都是OpenAI兼容格式，所以复用这一个类，
     只是换一下 base_url / api_key / 默认模型名。
     """
 
@@ -56,12 +56,18 @@ class OpenAIClient(LLMClient):
     ):
         # 模型名做成配置项，不硬编码在业务逻辑里。
         # 默认值只是一个当前存在的模型，随时可以在 .env 里覆盖。
-        self.model = model or os.environ.get("LLM_MODEL", "gpt-5.5")
-        key = api_key or os.environ.get("OPENAI_API_KEY")
+        self.model = model or os.environ.get("LLM_MODEL", "gpt-4o")
+        if base_url is None:
+            # 官方 OpenAI 路径：api_key 没显式传就回退到 OPENAI_API_KEY。
+            key = api_key or os.environ.get("OPENAI_API_KEY")
+        else:
+            # 兼容 provider（deepseek/aihubmix 等）：key 必须由调用方明确传入，
+            # 不回退 OPENAI_API_KEY，否则会拿错 key 静默打到别家 base_url 上。
+            key = api_key
         if not key:
-            key_name = "DEEPSEEK_API_KEY" if base_url else "OPENAI_API_KEY"
             raise RuntimeError(
-                f"未找到 {key_name}。请复制 .env.example 为 .env 并填入你的key。"
+                "未找到 API key。请在 .env 里为当前 provider 配置对应的 key："
+                "openai→OPENAI_API_KEY，deepseek→DEEPSEEK_API_KEY，aihubmix→AIHUBMIX_API_KEY。"
             )
         self.client = OpenAI(api_key=key, base_url=base_url)
 
@@ -120,8 +126,16 @@ def _build_client(provider: str, model: Optional[str]) -> LLMClient:
             api_key=os.environ.get("DEEPSEEK_API_KEY"),
             base_url="https://api.deepseek.com",
         )
+    if provider == "aihubmix":
+        # AIHubMix：API聚合平台，OpenAI兼容格式，一个key调GPT/Claude等强模型。
+        # 用它给QA当强判官（模型ID沿用各家原名，如 gpt-5-mini）。
+        return OpenAIClient(
+            model=model or "gpt-5-mini",
+            api_key=os.environ.get("AIHUBMIX_API_KEY"),
+            base_url="https://aihubmix.com/v1",
+        )
     raise ValueError(
-        f"未知的 LLM_PROVIDER: {provider}。当前MVP只实现了 'openai' 和 'deepseek'。"
+        f"未知的 LLM_PROVIDER: {provider}。当前MVP只实现了 'openai'、'deepseek'、'aihubmix'。"
     )
 
 

@@ -4,6 +4,36 @@
 
 ---
 
+## v1.1 — 接入 AIHubMix 判官 + 定稿流程调整
+
+### 修改
+- `llm_client.py` 新增 `aihubmix` provider（OpenAI 兼容聚合平台）；QA 判官换成 AIHubMix 的 GPT-5 mini
+- 定稿闭环改为"以修复收尾"：译文→QA→修复→复查→最后修复（末轮不再复查）
+- QA `max_tokens` 2048→8192：GPT-5 mini 是推理模型，2048 会被推理吃光导致返回空
+
+### 结果（EXP-005：受控对比两个判官）
+- 命中：植入 3 个已知错误，GPT-5 mini **3/3**，DeepSeek **0/3**
+- GPT-5 mini 还额外抓到 DeepSeek 全漏的真错误（含一个人物关系语义错）
+- 教训：为压 DeepSeek 噪音而过度收紧 prompt，把它的检测力也一起阉割了 → DeepSeek 判官已基本失效
+- GPT-5 mini 代价：对"用名/称谓"过度严格（可用 prompt 规则修，候选 EXP-006）
+
+---
+
+## v1.0 — 译法规范规则
+
+### 修改
+- Translator prompt 新增"译法规范"段（prompts/translator/v2.txt）：
+  成语不字面直译（举例 背黑锅→take the blame）、"火影"指动漫时译 Naruto、"原身"不译 predecessor
+
+### 原因
+- 人工复核发现成语直译、专名误译等必修错误，这些不是一致性问题、QA 抓不到
+
+### 结果
+- 第 1 章：3 个必修错误修好 2.5 个（背黑锅、原身修好；火影/Naruto 半修），无新增错误
+- 结论：prompt 规则能治"死记硬背"型错误，治不了"需要语境推理"型错误（详见 EXP-004）
+
+---
+
 ## v0.9 — 权威术语种子
 
 ### 新增

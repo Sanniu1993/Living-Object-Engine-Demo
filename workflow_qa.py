@@ -26,8 +26,10 @@ from memory_store import MemoryStore
 
 
 MAX_ISSUES = 20
-QA_MAX_TOKENS = 2048
-QA_RETRY_MAX_TOKENS = 1536
+# 上限放宽：推理模型（如 GPT-5 mini）会先花 token 做内部推理再输出，
+# 2048 太小会被推理吃光导致返回空。8192 给推理留足配额，同时仍能兜住 DeepSeek 跑飞。
+QA_MAX_TOKENS = 8192
+QA_RETRY_MAX_TOKENS = 4096
 
 # QA只允许这三类。便宜模型有时会自创"逻辑矛盾"之类的类别跑去点评剧情，
 # prompt已明令禁止，这里再做一次代码兜底：非这三类的issue直接丢弃。
@@ -53,6 +55,13 @@ Memory里的key是中文原文（如"猿飞日斩"），译文本来就该译成
 - 禁止新增上述三类之外的任何类别（例如"逻辑矛盾""情节问题"等一律不许出现）。
 - 如果一个问题不属于上述三类，直接不要输出它。
 - type字段只能是"术语不一致""称呼不一致""设定冲突"三者之一，不得填别的值。
+
+以下属于正常小说写法，不算不一致，不要报（避免误报）：
+- 用角色的名或简称称呼，而非每次都用全名（如只写 "Asuma"/"Kakashi"，不必是 "Asuma Sarutobi"/"Kakashi Hatake"）。
+- 用称谓/头衔指代人物（如把 Hiruzen Sarutobi 称作 "the Third Hokage"、"Lord Hokage"）。
+- 仅大小写或单复数差异（如 "Uchiha clan" vs "Uchiha Clan"）。
+只有出现"实质冲突"才算不一致：拼写不同、姓名顺序颠倒、用了完全不同的词，或漏词/改词导致术语变样
+（如 glossary 是 "Military Police Force" 却写成 "Military Police"）。
 
 严格输出规则（必须遵守）：
 - 只输出发现的问题。没有问题就返回空数组。

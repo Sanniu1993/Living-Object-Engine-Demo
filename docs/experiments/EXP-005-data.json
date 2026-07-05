@@ -1,0 +1,110 @@
+{
+  "clean": [
+    {
+      "chapter": 1,
+      "deepseek": {
+        "issues": [],
+        "passed": true
+      },
+      "gpt5mini": {
+        "issues": [],
+        "passed": true
+      }
+    },
+    {
+      "chapter": 2,
+      "deepseek": {
+        "issues": [],
+        "passed": true
+      },
+      "gpt5mini": {
+        "issues": [],
+        "passed": true
+      }
+    },
+    {
+      "chapter": 3,
+      "deepseek": {
+        "issues": [],
+        "passed": true
+      },
+      "gpt5mini": {
+        "issues": [
+          {
+            "type": "术语不一致",
+            "description": "Memory中“木叶警卫部”既定英文为“Konoha Military Police Force”（或“Military Police Force”），但译文使用了“Konoha Military Police”，与Memory中既定译法不一致。",
+            "severity": "medium"
+          }
+        ],
+        "passed": false
+      }
+    },
+    {
+      "chapter": 4,
+      "deepseek": {
+        "issues": [],
+        "passed": true
+      },
+      "gpt5mini": {
+        "issues": [
+          {
+            "type": "术语不一致",
+            "description": "“土流壁”在Memory中已记录为 \"Earth Release: Earth Flow Wall\"，译文处使用了 \"Earth Flow Wall\"（省略了 \"Earth Release:\" 前缀），与Memory中既有的英文译法不一致。",
+            "severity": "medium"
+          }
+        ],
+        "passed": false
+      }
+    },
+    {
+      "chapter": 5,
+      "deepseek": {
+        "issues": [],
+        "passed": true
+      },
+      "gpt5mini": {
+        "issues": [],
+        "passed": true
+      }
+    }
+  ],
+  "planted": {
+    "chapter": 1,
+    "planted_errors": [
+      {
+        "from": "Hokage Advisor",
+        "to": "Hokage Assistant",
+        "desc": "术语(全章违规)：glossary 为 Hokage Advisor"
+      },
+      {
+        "from": "Hiruzen Sarutobi",
+        "to": "Sarutobi Hiruzen",
+        "desc": "人名顺序(隐蔽,仅1处)：Memory 为 Hiruzen Sarutobi"
+      },
+      {
+        "from": "Orochimaru",
+        "to": "Orochi",
+        "desc": "人名(隐蔽,仅1处)：Memory 为 Orochimaru"
+      }
+    ],
+    "deepseek": {
+      "issues": [],
+      "passed": true
+    },
+    "gpt5mini": {
+      "issues": [
+        {
+          "type": "称呼不一致",
+          "description": "译文在章节开头使用了 'Sarutobi Hiruzen'，而Memory中确立的译名为 'Hiruzen Sarutobi'；文中后续又出现 'Hiruzen Sarutobi'，存在同一人物称呼前后不一致的问题。",
+          "severity": "high"
+        },
+        {
+          "type": "术语不一致",
+          "description": "译文多处将“火影辅佐”翻作 'Hokage Assistant'，但Memory中该术语已确立为 'Hokage Advisor'，两者不一致。",
+          "severity": "medium"
+        }
+      ],
+      "passed": false
+    }
+  }
+}

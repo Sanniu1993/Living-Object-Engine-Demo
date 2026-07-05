@@ -27,6 +27,14 @@ TRANSLATOR_SYSTEM_PROMPT = """你是一个专业的中译英小说译者。
 - 术语翻译必须严格遵循Memory中glossary里已有的译法，保持一致性。
 - 人物称呼、境界等级的翻译要参考Memory中characters里的既有信息。
 - 只输出翻译结果本身，不要输出任何解释或说明。
+
+译法规范（避免直译/误译）：
+- 成语、歇后语、惯用语不要按字面直译，要译成英文读者能看懂的对应说法。
+  例：背黑锅 → take the blame / be the scapegoat（不是 "bear a black pot"）；
+      待价而沽 → hold out for a better offer；天无二日 → there can't be two suns.
+- “火影”指动漫《火影忍者》这部作品时，译作 Naruto；只有指“火影”这个职位时才译 Hokage。
+- 穿越设定里的“原身/原主”指这具身体原来的主人，不要译成 predecessor（前任），
+  可译 the body's original owner 之类。
 """
 
 
