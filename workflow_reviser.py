@@ -16,10 +16,29 @@ Workflow 5: Reviser（修订）
 """
 
 import json
+import re
 from typing import Optional
 
 from llm_client import LLMClient
 from memory_store import MemoryStore
+
+
+_CJK_RE = re.compile(r"[一-鿿]+")
+
+
+def find_untranslated_cjk(text: str) -> list[str]:
+    """
+    确定性地找出译文里残留的中文片段（DeepSeek 偶发漏译）。
+
+    这是对 LLM 判官的补充：判官管语义一致性，这个正则管"有没有中文没翻干净"——
+    后者确定性可判、不用花钱，却是判官的盲区。返回去重后的中文片段列表。
+    """
+    seen, out = set(), []
+    for frag in _CJK_RE.findall(text):
+        if frag not in seen:
+            seen.add(frag)
+            out.append(frag)
+    return out
 
 
 REVISER_SYSTEM_PROMPT = """你是一个译文修订员。

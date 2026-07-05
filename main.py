@@ -33,7 +33,7 @@ from splitter import load_and_split
 from workflow_extractor import extract_memory
 from workflow_translator import translate_chapter
 from workflow_qa import run_qa
-from workflow_reviser import revise_translation
+from workflow_reviser import revise_translation, find_untranslated_cjk
 
 
 MAX_REVISE_ROUNDS = 2  # QA→修订最多来回几轮，有界防止QA噪音导致死循环
@@ -127,6 +127,9 @@ def main():
                 client, qa_client, memory, chapter, translated, qa_result, args.recheck
             )
 
+        # 漏译闸（确定性，几乎免费）：译文里不该有中文，有就补译。判官抓不到这类，单独兜底。
+        translated = _fix_untranslated(client, memory, chapter, translated)
+
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(translated)
         print(f"      {'定稿' if args.revise else '译文'}已写入 {out_path}")
@@ -136,6 +139,28 @@ def main():
         _write_qa_report(args.qa_report, qa_by_chapter)  # 增量落盘，中途崩不丢
 
     print(f"\n全部完成。Memory: {args.memory_path} | QA报告: {args.qa_report}")
+
+
+def _fix_untranslated(client, memory, chapter, translated, max_tries=2):
+    """
+    确定性漏译兜底：译文含中文就让 reviser 把那几段补译，最多补 max_tries 次。
+    检测免费（正则），只有真漏译时才花一次 DeepSeek 调用。人名会走 Memory 里的既定英文名。
+    """
+    for _ in range(max_tries):
+        leftover = find_untranslated_cjk(translated)
+        if not leftover:
+            break
+        print(f"      [漏译] 检测到未翻译中文：{' '.join(leftover)[:40]} → 补译")
+        issue = [{
+            "type": "漏译",
+            "severity": "high",
+            "description": "以下中文片段未翻译，请译成地道英文并融入上下文（人名/术语用Memory里已确立的英文）："
+                           + "、".join(leftover),
+        }]
+        translated = revise_translation(
+            client, memory, chapter.index, translated, issue, chapter.content
+        )
+    return translated
 
 
 def _load_qa_report(path: str) -> dict:
