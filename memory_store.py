@@ -39,8 +39,10 @@ def _empty_memory() -> dict:
         "characters": {},      # entity_id -> {attributes..., "state_history": [...]}
         "locations": {},       # entity_id -> {...}
         "organizations": {},   # entity_id -> {...}
-        "glossary": {},        # lang -> {术语 -> 译文}（多语言：每个目标语言各一份）
+        "glossary": {},        # lang -> {术语 -> 译文}（专名：人名/地名/组织/招式，每语言一份）
+        "idioms": {},          # lang -> {中文成语/惯用语 -> 地道译法}（非专名的"术语库"，每语言一份）
         "glossary_extracted": {},  # lang -> [已提议过glossary的章号]，与理解抽取分开计幂等
+        "idioms_extracted": {},    # lang -> [已提议过idioms的章号]，与glossary再分开（可后加而不重跑理解）
         "timeline": [],        # 追加写入的事件列表，永不删除/覆盖
         "state_log": [],       # 全局State变化记录，跨entity类型共用同一结构
         "extracted_chapters": [],  # 已"理解"抽取过的章号（语言无关），用于幂等/断点续跑
@@ -83,6 +85,10 @@ class MemoryStore:
             # 老数据的英文 glossary 已随理解抽取一起产出过了。
             self.data["glossary_extracted"]["en"] = list(self.data.get("extracted_chapters", []))
 
+        # idioms 是后加的 bucket，老数据没有；补空即可（不影响已抽取的理解/glossary）。
+        self.data.setdefault("idioms", {})
+        self.data.setdefault("idioms_extracted", {})
+
     # ---------- 持久化 ----------
 
     def _save(self):
@@ -95,16 +101,21 @@ class MemoryStore:
         return self.data
 
     def glossary_for(self, lang: str) -> dict:
-        """取某个目标语言的 glossary（术语->译文）。不存在则返回空 dict。"""
+        """取某个目标语言的 glossary（专名术语->译文）。不存在则返回空 dict。"""
         return self.data.get("glossary", {}).get(lang, {})
+
+    def idioms_for(self, lang: str) -> dict:
+        """取某个目标语言的 idioms（成语/惯用语->地道译法）。不存在则返回空 dict。"""
+        return self.data.get("idioms", {}).get(lang, {})
 
     def as_context_string(self, lang: str = "en") -> str:
         """
         供Translator/QA等Workflow拼接进prompt的精简上下文。
-        glossary 只放当前目标语言那一份，避免把别的语言的译名也塞进 prompt。
+        glossary/idioms 只放当前目标语言那一份，避免把别的语言的译法也塞进 prompt。
         """
         view = dict(self.data)
         view["glossary"] = self.glossary_for(lang)
+        view["idioms"] = self.idioms_for(lang)
         return json.dumps(view, ensure_ascii=False, indent=2)
 
     def _capped_summary(self) -> str:
@@ -134,6 +145,7 @@ class MemoryStore:
             "locations": attrs_only(self.data["locations"]),
             "organizations": attrs_only(self.data["organizations"]),
             "glossary": self.glossary_for(lang),
+            "idioms": self.idioms_for(lang),
         }
         return json.dumps(view, ensure_ascii=False, indent=2)
 
@@ -159,6 +171,7 @@ class MemoryStore:
         locations = {k: v for k, v in self.data["locations"].items() if mentioned(k)}
         organizations = {k: v for k, v in self.data["organizations"].items() if mentioned(k)}
         glossary = {k: v for k, v in self.glossary_for(lang).items() if mentioned(k)}
+        idioms = {k: v for k, v in self.idioms_for(lang).items() if mentioned(k)}
 
         relevant_entities = set(characters) | set(locations) | set(organizations)
         timeline = [
@@ -175,6 +188,7 @@ class MemoryStore:
             "locations": locations,
             "organizations": organizations,
             "glossary": glossary,
+            "idioms": idioms,
             "timeline": timeline,
             "state_log": state_log,
         }
@@ -199,6 +213,17 @@ class MemoryStore:
     def mark_glossary_extracted(self, chapter: int, lang: str):
         ge = self.data.setdefault("glossary_extracted", {})
         chapters = ge.setdefault(lang, [])
+        if chapter not in chapters:
+            chapters.append(chapter)
+        self._save()
+
+    def is_idioms_extracted(self, chapter: int, lang: str) -> bool:
+        """该章是否已为某目标语言提议过 idioms（与 glossary 再分开，便于后加而不重跑理解/glossary）。"""
+        return chapter in self.data.get("idioms_extracted", {}).get(lang, [])
+
+    def mark_idioms_extracted(self, chapter: int, lang: str):
+        ie = self.data.setdefault("idioms_extracted", {})
+        chapters = ie.setdefault(lang, [])
         if chapter not in chapters:
             chapters.append(chapter)
         self._save()
@@ -288,6 +313,21 @@ class MemoryStore:
         for term, translation in terms.items():
             if term not in glossary:
                 glossary[term] = translation
+        self._save()
+
+    def seed_idioms(self, terms: dict[str, str], lang: str):
+        """为某目标语言注入权威成语/惯用语表（种子）。同 seed_glossary，是"设置/覆盖"。"""
+        idioms = self.data.setdefault("idioms", {}).setdefault(lang, {})
+        for term, translation in terms.items():
+            idioms[term] = translation
+        self._save()
+
+    def add_idiom_terms(self, terms: dict[str, str], lang: str):
+        """成语/惯用语只增不改：已存在就保留原译，让译法冻结后被一致复用，冲突留给上层发现。"""
+        idioms = self.data.setdefault("idioms", {}).setdefault(lang, {})
+        for term, translation in terms.items():
+            if term not in idioms:
+                idioms[term] = translation
         self._save()
 
     def add_timeline_event(self, chapter: int, description: str, involved_entities: list[str]):

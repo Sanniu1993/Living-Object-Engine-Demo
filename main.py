@@ -27,13 +27,18 @@ import json
 import os
 from dotenv import load_dotenv
 
-from languages import DEFAULT_LANG, LANGUAGES, get_language, find_untranslated_source as find_untranslated_cjk
+from languages import (
+    DEFAULT_LANG, LANGUAGES, get_language,
+    find_untranslated_source as find_untranslated_cjk,
+    find_long_sentences,
+)
 from llm_client import get_client, LLMClient
 from memory_store import MemoryStore
 from splitter import load_and_split
 from workflow_extractor import extract_memory
 from workflow_translator import translate_chapter, translate_title
 from workflow_qa import run_qa
+from workflow_review import run_fluency_review
 from workflow_reviser import revise_translation
 
 
@@ -75,6 +80,12 @@ def main():
         help="修复后再用判官复查一遍（更稳但多花强判官调用）；默认关：QA→修复即收尾",
     )
     parser.add_argument(
+        "--fluency",
+        action="store_true",
+        help="单语流畅度审校（L2）：判官只看译文，抓语法/生硬直译/前后矛盾并修复。"
+             "对小语种（如阿拉伯语）尤其有用；每章多一次强判官调用",
+    )
+    parser.add_argument(
         "--seed-glossary",
         default=None,
         help="权威术语表种子（中文->目标语），跑前注入Memory作为canonical译名；"
@@ -98,7 +109,9 @@ def main():
     print(f"      共识别到 {len(chapters)} 章")
 
     client = get_client()          # 翻译/抽取：便宜的deepseek
-    qa_client = get_client("qa")   # QA判官：可在.env里配成更强的模型（如openai）
+    qa_client = get_client("qa")   # 一致性QA判官：可在.env里配成更强的模型
+    # 流畅度判官：默认和一致性QA同模型；配 FLUENCY_LLM_* 可单独换更强的（如 gpt-5）
+    fluency_client = get_client("fluency", fallback_role="qa")
     memory = MemoryStore(args.memory_path)
 
     if seed_glossary_path and os.path.exists(seed_glossary_path):
@@ -106,6 +119,12 @@ def main():
             seed = json.load(f)
         memory.seed_glossary(seed, lang.code)
         print(f"[种子] 已为 {lang.code} 注入 {len(seed)} 条权威术语（{seed_glossary_path}）")
+
+    if lang.idiom_seed_file and os.path.exists(lang.idiom_seed_file):
+        with open(lang.idiom_seed_file, "r", encoding="utf-8") as f:
+            idiom_seed = json.load(f)
+        memory.seed_idioms(idiom_seed, lang.code)
+        print(f"[种子] 已为 {lang.code} 注入 {len(idiom_seed)} 条成语/惯用语（{lang.idiom_seed_file}）")
 
     if args.ab_test:
         run_ab_test(client, qa_client, memory, chapters, output_dir, args.ab_report, lang)
@@ -143,8 +162,18 @@ def main():
                 client, qa_client, memory, chapter, translated, qa_result, lang, args.recheck
             )
 
+        if args.fluency:
+            # 单语审校：流畅度判官只看译文抓语法/生硬/矛盾，deepseek 按清单修。
+            translated, fluency_result = _review_fluency(
+                fluency_client, client, memory, chapter, translated, lang
+            )
+            qa_result["fluency"] = fluency_result
+
         # 漏译闸（确定性，几乎免费）：译文里不该残留源语言(中文)，有就补译。判官抓不到这类，单独兜底。
         translated = _fix_untranslated(client, memory, chapter, translated, lang)
+
+        # 长句闸（确定性）：按目标语言阈值找 run-on，只把超长的那几句拆短（阿语短句优先）。
+        translated = _fix_long_sentences(client, memory, chapter, translated, lang)
 
         # 翻译章节标题（成品需要目标语标题）；标题也过漏译闸，残留中文就重译一次。
         title_out = translate_title(client, memory, chapter.title, lang)
@@ -166,6 +195,52 @@ def main():
         _write_qa_report(qa_report_path, qa_by_chapter)  # 增量落盘，中途崩不丢
 
     print(f"\n全部完成。Memory: {args.memory_path} | QA报告: {qa_report_path}")
+
+
+def _review_fluency(judge_client, fix_client, memory, chapter, translated, lang):
+    """
+    单语流畅度审校闭环（L2）：判官(强模型)只看译文挑毛病 → deepseek 按清单修一次。
+    只修一轮（判官已是强模型，一次足够；多轮性价比低）。审校发现的问题原样存进报告，
+    即使这次没全修好，也留痕可追。返回 (修订后译文, 审校结果dict)。
+    """
+    print("  [流畅度审校] 判官只看译文，查语法/生硬/前后矛盾...")
+    result = run_fluency_review(judge_client, chapter.index, translated, lang)
+    issues = result.get("issues", [])
+    if not issues:
+        print("      流畅度：通过")
+        return translated, result
+
+    print(f"      流畅度：发现 {len(issues)} 处 → 修复")
+    translated = revise_translation(
+        fix_client, memory, chapter.index, translated, issues, lang, chapter.content
+    )
+    return translated, result
+
+
+def _fix_long_sentences(client, memory, chapter, translated, lang, max_tries=2):
+    """
+    确定性长句闸：按 lang.max_sentence_words 找出超长句（run-on），只把这几句丢给 reviser
+    在语义完整处断成 2~3 句，其余一律不动。阈值=0 的语言直接跳过（如英/西默认关）。
+    检测免费（数词），只有真有超长句才花一次修复调用；拆完再复查，最多 max_tries 轮。
+    """
+    if not lang.max_sentence_words:
+        return translated
+    for _ in range(max_tries):
+        longs = find_long_sentences(translated, lang.max_sentence_words)
+        if not longs:
+            break
+        print(f"      [长句] {len(longs)} 句超 {lang.max_sentence_words} 词 → 拆短")
+        issues = [{
+            "type": "句子冗长",
+            "severity": "low",
+            "quote": s,
+            "description": f"这句超过 {lang.max_sentence_words} 词，请在语义完整处断成 2~3 个较短句子，"
+                           "保持原意、术语/人名不变，不要改动其他句子。",
+        } for s in longs]
+        translated = revise_translation(
+            client, memory, chapter.index, translated, issues, lang, chapter.content
+        )
+    return translated
 
 
 def _fix_untranslated(client, memory, chapter, translated, lang, max_tries=2):

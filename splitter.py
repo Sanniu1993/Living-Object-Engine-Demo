@@ -27,6 +27,46 @@ CHAPTER_PATTERN = re.compile(
 )
 
 
+# L0：作者话确定性识别。这些词组基本只出现在中文网文的作者求票/求收藏段落里，
+# 正常故事正文几乎不会出现，所以用它们判定"整段是不是作者话"很安全。
+# 注意"收藏"单独出现有歧义（剧情里也可能收藏东西），因此只收强信号词组。
+_AUTHOR_NOTE_MARKERS = re.compile(
+    r"月票|推荐票|追读|求订阅|求收藏|求鲜花|求评价|求打赏|打赏|跪求|跪谢|拜托|"
+    r"求支持|求推荐|新书求|二合一|作者的话|作者君|码字|订阅一下|各位读者老爷|书友"
+)
+# 段首出现这些前缀也判为作者话（PS/P.S./作者：等）。
+_AUTHOR_NOTE_PREFIX = re.compile(r"^\s*(PS[：:.\s]|P\.S|作者[：:]|【作者)", re.IGNORECASE)
+# 纯分隔线/纯标点段落（——、----、***、===、。！ 等），末尾出现时属于排版残留，可安全清掉。
+_SEP_ONLY = re.compile(r"^[\s\-—–~*=·.。!！,，、]+$")
+
+
+def strip_author_notes(content: str) -> str:
+    """
+    删掉章节里的作者话段落（求月票/求收藏/追读/拜托之类），只删"整段是作者话"的段落，
+    不碰正常剧情。判据：段落命中强信号词组，或以 PS/作者 之类前缀开头。
+    收尾再把末尾遗留的纯分隔线/纯标点段落（作者话常跟在一条"——"分隔线后）清掉。
+    这是确定性处理，几乎免费、且全语言受益。
+    """
+    paragraphs = re.split(r"\n\s*\n", content)
+    kept = []
+    for para in paragraphs:
+        p = para.strip()
+        if not p:
+            continue
+        is_author_note = bool(_AUTHOR_NOTE_PREFIX.match(p)) or bool(_AUTHOR_NOTE_MARKERS.search(p))
+        # 只删"短段落"里的作者话：作者话通常一两句。长段落即使碰巧含关键词，
+        # 也更可能是正文（比如剧情真的在讲"更新换代"），从严保护正文，不误删。
+        if is_author_note and len(p) <= 60:
+            continue
+        kept.append(p)
+
+    # 清掉末尾遗留的纯分隔线/纯标点段落（如作者话删掉后剩下的那条 "——"）。
+    while kept and _SEP_ONLY.match(kept[-1]):
+        kept.pop()
+
+    return "\n\n".join(kept)
+
+
 @dataclass
 class Chapter:
     index: int          # 1-based
@@ -53,7 +93,7 @@ def split_chapters(full_text: str) -> list[Chapter]:
         # 分隔线+编号格式会匹配到多行（"---\n\n001 标题"），
         # 标题只取最后一个非空行。
         title_line = match.group(0).strip().splitlines()[-1].strip()
-        content = full_text[match.end():end].strip()
+        content = strip_author_notes(full_text[match.end():end].strip())
 
         chapters.append(Chapter(index=i + 1, title=title_line, content=content))
 

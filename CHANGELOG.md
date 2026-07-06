@@ -4,6 +4,65 @@
 
 ---
 
+## v1.11 — reasoning_effort 可配置（流畅度判官降本 ~85%）
+
+### 修改
+- `llm_client`：OpenAIClient 支持 `reasoning_effort`；按角色读 `{PREFIX}REASONING_EFFORT`（minimal/low/medium/high）
+- `.env`：`FLUENCY_REASONING_EFFORT=minimal`
+
+### 结果（EXP-011）
+- 同一份 ch3：gpt-5@minimal 抓 15 条 = gpt-5@medium/high，但推理 token 从 ~13400 降到 0
+- 成本 $0.155/章 → $0.023/章（降 ~85%），质量不降
+- 心得：换强推理模型先扫 reasoning_effort——默认 medium 常在为没用的推理付费
+
+---
+
+## v1.10 — 流畅度判官可独立配置 + 换 GPT-5
+
+### 修改
+- `llm_client.get_client` 加 `fallback_role` 参数；新增 "fluency" 角色（不配则回退和一致性QA同模型）
+- `main.py` 流畅度审校改用 `get_client("fluency", fallback_role="qa")`，与一致性QA判官解耦
+- `.env` 配 `FLUENCY_LLM_MODEL=gpt-5`：流畅度审校换更强判官
+- `workflow_review.py` `REVIEW_MAX_TOKENS` 8192 → 24000：推理模型 max_tokens 含推理额度，gpt-5 在 8192 下会空返
+
+### 结果（EXP-010）
+- 同一份 ch3 原始译文：gpt-5 去重 22 条 vs mini 15 条，两者仅重叠 3 条；gpt-5 更稳（15+15 vs 7+8）
+- gpt-5 抓到 mini 漏掉的**指代错误**（"你妻子做的菜"实为师母琵琶湖所做）——语义级、非表面语法
+- 教训升级：模型越强、输出预算要留越大，否则静默空返比弱模型还差
+
+---
+
+## v1.9 — L0 删作者话 + L2 单语流畅度审校
+
+### 修改
+- `splitter.py` 新增 `strip_author_notes()`：切章时确定性删"求月票/追读/拜托"等作者话段落 + 末尾残留分隔线（L0，全语言受益，零成本）
+- `workflow_review.py`（新）：单语流畅度审校，判官只看译文（不看原文/Memory），抓语法错误/生硬直译/前后矛盾三类；沿用 8192 token + 重试防空返
+- `main.py` 加 `--fluency`：QA 一致性后跑流畅度审校，issue 复用现有 reviser 修复；默认关
+- `workflow_reviser.py` 指令放宽：除"统一术语"外，也能改写被点名的流畅度问题（仍只动被点名处）
+- `languages.py` ar `translator_notes` 回灌人工发现的 4 类阿语译法坑（L1）
+
+### 结果（EXP-009）
+- 一致性 QA 全"通过"的两章仍各有 9/4 处流畅度问题，全部修复（13/13）
+- 关键：L2 抓到确定性漏译闸的结构性盲区——混进译文的**英文 token**（`أنSubjects`）和嵌在词内的脏中文（`情报`）
+- 校验维度扩为四条：确定性正则(源语言漏译) + 一致性判官(术语/设定) + 流畅度判官(单语通顺) + 人工撞名(实体身份)
+
+---
+
+## v1.8 — 多语言（阿拉伯语 + 西班牙语插口）
+
+### 修改
+- 新增 `languages.py`：语言插口注册表（en/ar/es），封装语言名/章节标题词/输出归一化/源语言残留检测
+- `memory_store.py` glossary 改为按语言分区 `{lang: {术语: 译文}}`；旧单语 memory.json 首次加载自动迁移进 "en"；理解部分（characters/timeline/state_log/summary）语言无关、跨语言复用
+- 抽取幂等分两层：理解按 `extracted_chapters`（全局一次）、glossary 按 `glossary_extracted[lang]`（每语言一次）
+- 各 workflow prompt 参数化为按 `Language` 生成；译文分目录 `translations/<lang>/`；QA 报告 `qa_report_<lang>.json`
+- 新增 `--target-lang`；`seed_glossary_ar.json` / `seed_glossary_es.json`；verify/check_name_collisions 支持 `--lang`
+
+### 结果
+- 阿拉伯语跑通：术语零漂移、理解未被重复抽取（state_log 214 不变）、无中文残留
+- 加新语言 = 改 `languages.py` 一处 +（可选）一份种子表
+
+---
+
 ## v1.7 — 修正误合并 + 撞名防呆检查
 
 ### 修改

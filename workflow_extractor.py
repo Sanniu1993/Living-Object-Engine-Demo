@@ -43,6 +43,9 @@ def _extractor_system_prompt(lang: Language) -> str:
   "glossary": {{
     "专有名词": "建议的{lang.zh_name}翻译"
   }},
+  "idioms": {{
+    "中文成语/惯用语/政治或网络用语": "地道的{lang.zh_name}译法（意译，不是字面直译）"
+  }},
   "timeline_events": [
     {{"description": "事件描述", "involved_entities": ["人物名1", "地点名1"]}}
   ],
@@ -53,6 +56,8 @@ def _extractor_system_prompt(lang: Language) -> str:
 - 只报告本章实际出现或变化的信息，不要凭空推测。
 - characters/locations/organizations/timeline/summary 用中文填写（这些是语言无关的理解，供各语言共用）。
 - glossary 的 value 一律用{lang.endonym}给出专有名词译名（人名/地名/组织/招式）。
+- idioms 只收"字面直译会出错或不自然"的表达：成语、歇后语、比喻、政治/网络用语（如"做大蛋糕""五根手指都要硬"）；
+  key 用中文原表达，value 给{lang.endonym}地道意译。普通句子不要放进来。本章没有就返回空对象。
 - characters/locations/organizations 里只需要给出属性字典，
   不需要判断这是不是"变化"—— 上层代码会自动处理新增/合并/记录变化历史。
 - 如果某个类别本章没有新信息，返回空对象/空数组即可。
@@ -67,14 +72,16 @@ def extract_memory(
     lang: Language,
 ):
     """
-    幂等分两层：
+    幂等分三层，各自独立：
     - 理解（语言无关）：按 extracted_chapters 判，全局只抽一次。
-    - glossary（每语言）：按 glossary_extracted[lang] 判。这样换第二种语言时，
-      理解不会被重复 append（否则 state_log 会重复计数），但仍会为新语言补上 glossary。
+    - glossary（每语言）：按 glossary_extracted[lang] 判。换第二种语言时理解不重复 append，仍补 glossary。
+    - idioms（每语言）：按 idioms_extracted[lang] 判。idioms 是后加的 bucket，
+      单独计幂等，这样即使某章的理解/glossary 早抽过，也能为它补上成语库而不重跑其余。
     """
     understanding_done = memory.is_chapter_extracted(chapter_index)
     glossary_done = memory.is_glossary_extracted(chapter_index, lang.code)
-    if understanding_done and glossary_done:
+    idioms_done = memory.is_idioms_extracted(chapter_index, lang.code)
+    if understanding_done and glossary_done and idioms_done:
         return None
 
     user_prompt = f"""已有Memory（供你参考避免重复抽取已知信息）：
@@ -118,5 +125,12 @@ def extract_memory(
         if glossary:
             memory.add_glossary_terms(glossary, lang.code)
         memory.mark_glossary_extracted(chapter_index, lang.code)
+
+    # idioms 同样按目标语言分别写入（独立幂等）。
+    if not idioms_done:
+        idioms = result.get("idioms", {})
+        if idioms:
+            memory.add_idiom_terms(idioms, lang.code)
+        memory.mark_idioms_extracted(chapter_index, lang.code)
 
     return result

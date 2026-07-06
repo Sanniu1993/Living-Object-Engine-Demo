@@ -28,6 +28,7 @@ def _translator_system_prompt(lang: Language) -> str:
 翻译要求：
 - 目标语言是{lang.endonym}，译文必须全部使用{lang.endonym}，不得残留中文，也不要夹杂其他语言。
 - 术语翻译必须严格遵循Memory中glossary里已有的译法，保持一致性。
+- 成语/惯用语/网络用语：Memory 的 idioms 里若已有地道译法，直接沿用那一版，不要再自己字面直译。
 - 人物称呼、境界等级的翻译要参考Memory中characters里的既有信息。
 - 只输出翻译结果本身，不要输出任何解释或说明。
 
