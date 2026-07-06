@@ -40,6 +40,7 @@ from workflow_translator import translate_chapter, translate_title
 from workflow_qa import run_qa
 from workflow_review import run_fluency_review
 from workflow_reviser import revise_translation
+from lint import apply_fixes as apply_lint_fixes, run_lint
 
 
 MAX_REVISE_ROUNDS = 2  # QA→修订最多来回几轮，有界防止QA噪音导致死循环
@@ -186,9 +187,19 @@ def main():
         translated = lang.normalize(translated)
         title_out = lang.normalize(title_out)
 
+        # 确定性 lint：自动修掉已确认的固定错误（方言/性数等，见 lint_<lang>.json），免费、不复发。
+        translated, nlint = apply_lint_fixes(translated, lang.code)
+        title_out, _ = apply_lint_fixes(title_out, lang.code)
+        if nlint:
+            print(f"      [lint] 自动修正 {nlint} 处已知错误")
+
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(title_out + "\n\n" + translated)
         print(f"      {'定稿' if args.revise else '译文'}已写入 {out_path}")
+
+        # 无法自动修的（疑似人名污染/夹带外语/残留中文）只报警，供人工或下一轮处理。
+        for typ, items in run_lint(translated, memory, lang):
+            print(f"      [lint⚠] {typ}: {' / '.join(map(str, items))[:60]}")
 
         qa_result["chapter"] = chapter.index
         qa_by_chapter[chapter.index] = qa_result
