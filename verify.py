@@ -14,7 +14,8 @@ verify.py
 这不是自动化测试框架，就是一个跑一次看结果的脚本 —— MVP阶段不需要更多。
 
 用法：
-  python verify.py --memory-path memory.json --translations-dir translations
+  python verify.py --lang en          # 译文默认在 translations/<lang> 下
+  python verify.py --lang ar --translations-dir translations/ar
 """
 
 import argparse
@@ -48,11 +49,12 @@ def verify_state_growth(memory: dict):
               "这本身不代表失败，可能是这10章里角色状态变化确实较少。")
 
 
-def verify_glossary_consistency(memory: dict, translations_dir: str):
-    print("\n--- 验证点2：早期章节术语是否在后续翻译中被正确复用 ---")
-    glossary = memory.get("glossary", {})
+def verify_glossary_consistency(memory: dict, translations_dir: str, lang: str):
+    print(f"\n--- 验证点2：早期章节术语是否在后续翻译中被正确复用（{lang}）---")
+    # glossary 现在按语言分区：{lang: {术语: 译文}}。取当前语言那一份。
+    glossary = memory.get("glossary", {}).get(lang, {})
     if not glossary:
-        print("  glossary为空，无法验证。")
+        print(f"  {lang} 的 glossary 为空，无法验证。")
         return
 
     files = sorted(
@@ -85,14 +87,21 @@ def verify_glossary_consistency(memory: dict, translations_dir: str):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--memory-path", default="memory.json")
-    parser.add_argument("--translations-dir", default="translations")
+    parser.add_argument("--lang", default="en", help="要验证的目标语言（en/ar/es...）")
+    parser.add_argument(
+        "--translations-dir",
+        default=None,
+        help="译文目录，默认 translations/<lang>",
+    )
     args = parser.parse_args()
+
+    translations_dir = args.translations_dir or os.path.join("translations", args.lang)
 
     with open(args.memory_path, "r", encoding="utf-8") as f:
         memory = json.load(f)
 
     verify_state_growth(memory)
-    verify_glossary_consistency(memory, args.translations_dir)
+    verify_glossary_consistency(memory, translations_dir, args.lang)
 
 
 if __name__ == "__main__":

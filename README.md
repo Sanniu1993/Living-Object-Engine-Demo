@@ -68,10 +68,33 @@ python main.py --input chapters/my_novel.txt --ab-test
 - 对比报告写到 `ab_test_report.json`（`--ab-report` 可改路径）
 - 注意：对照实验**不做**自动修订（否则两版都被洗干净就无法比较），`--revise` 只在普通模式生效
 
+## 多语言（`--target-lang`）
+
+默认译成英文。加 `--target-lang` 可换目标语言，目前已登记 **en（英）/ ar（阿拉伯）/ es（西班牙）**：
+
+```bash
+python main.py --input chapters/my_novel.txt --target-lang ar
+```
+
+为什么这个架构适合多语言：Extractor「**只理解，不翻译**」，所以 Memory 里
+`characters/locations/organizations/timeline/state_log/summary` 都是**语言无关**的，一份就够所有语言用、不用重跑理解。真正跟语言绑定的只有 `glossary`（术语译名）和译文本身。因此：
+
+- **一份语言无关的理解 + 每个目标语言各一份 glossary**。跑第二种语言时，理解直接复用（`state_log` 不会被重复计数），只为新语言补 glossary + 出译文。
+- 译文按语言分目录：`translations/<lang>/chapter_XX.txt`；QA 报告 `qa_report_<lang>.json`。
+- `memory.json` 里 `glossary` 变成 `{lang: {术语: 译文}}`。旧的单语言 `memory.json` **首次运行时自动迁移**（老的扁平 glossary 归入 `"en"`），无需手动改。
+
+### 加一门新语言（插口在 `languages.py`）
+
+新增语言只动一个文件：在 `languages.py` 的 `LANGUAGES` 里加一条 `Language`，声明语言名、章节标题词（Chapter/الفصل/Capítulo）、输出归一化（拉丁字母目标去罗马字长音符，其他用 identity）等。**可选**再放一份 `seed_glossary_<code>.json` 权威术语种子（没有也能跑，靠 Extractor 自动提议译名）。
+
+西班牙语插口已登记好，直接 `--target-lang es` 即可跑；想要更稳的术语一致性，补一份 `seed_glossary_es.json`。阿拉伯语已附带 `seed_glossary_ar.json`（核心人名/地名/组织）。
+
+> 注意：残留检测目前按"译文里是否残留中文"判漏译（源语言固定中文，目标 en/ar/es 都不是 CJK，成立）。若将来要加日语/韩语这类 CJK 目标，需在 `languages.py` 里换成按"源文特有片段"检测——那里留了说明。
+
 ## 验证核心假设
 
 ```bash
-python verify.py
+python verify.py --lang ar          # 验证某个目标语言（默认 en）
 ```
 
 会直接告诉你两件事：

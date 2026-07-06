@@ -39,10 +39,11 @@ def _empty_memory() -> dict:
         "characters": {},      # entity_id -> {attributes..., "state_history": [...]}
         "locations": {},       # entity_id -> {...}
         "organizations": {},   # entity_id -> {...}
-        "glossary": {},        # 术语 -> 译文
+        "glossary": {},        # lang -> {术语 -> 译文}（多语言：每个目标语言各一份）
+        "glossary_extracted": {},  # lang -> [已提议过glossary的章号]，与理解抽取分开计幂等
         "timeline": [],        # 追加写入的事件列表，永不删除/覆盖
         "state_log": [],       # 全局State变化记录，跨entity类型共用同一结构
-        "extracted_chapters": [],  # 已抽取过的章号，用于幂等/断点续跑，防止重复append
+        "extracted_chapters": [],  # 已"理解"抽取过的章号（语言无关），用于幂等/断点续跑
     }
 
 
@@ -59,9 +60,28 @@ class MemoryStore:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 self.data = json.load(f)
+            self._migrate()
         else:
             self.data = _empty_memory()
             self._save()
+
+    def _migrate(self):
+        """
+        向后兼容旧的单语言 memory.json：早期 glossary 是扁平的 {术语: 英文译文}，
+        现在改成按语言分区的 {lang: {术语: 译文}}。这里把旧格式原样搬进 "en"，
+        并把那些"理解已抽取"的章标记为"en 的 glossary 也已生成"，避免重复提议。
+        """
+        g = self.data.get("glossary", {})
+        # 旧格式判定：值不是 dict（是字符串译文）就说明是扁平的老 glossary。
+        if g and any(not isinstance(v, dict) for v in g.values()):
+            self.data["glossary"] = {"en": g}
+        elif not isinstance(g, dict):
+            self.data["glossary"] = {}
+
+        self.data.setdefault("glossary_extracted", {})
+        if "en" in self.data.get("glossary", {}) and "en" not in self.data["glossary_extracted"]:
+            # 老数据的英文 glossary 已随理解抽取一起产出过了。
+            self.data["glossary_extracted"]["en"] = list(self.data.get("extracted_chapters", []))
 
     # ---------- 持久化 ----------
 
@@ -74,13 +94,18 @@ class MemoryStore:
     def as_dict(self) -> dict:
         return self.data
 
-    def as_context_string(self) -> str:
+    def glossary_for(self, lang: str) -> dict:
+        """取某个目标语言的 glossary（术语->译文）。不存在则返回空 dict。"""
+        return self.data.get("glossary", {}).get(lang, {})
+
+    def as_context_string(self, lang: str = "en") -> str:
         """
         供Translator/QA等Workflow拼接进prompt的精简上下文。
-        MVP阶段直接把结构化Memory转成JSON字符串喂给模型，
-        不做额外的摘要/裁剪 —— 10章体量不需要。
+        glossary 只放当前目标语言那一份，避免把别的语言的译名也塞进 prompt。
         """
-        return json.dumps(self.data, ensure_ascii=False, indent=2)
+        view = dict(self.data)
+        view["glossary"] = self.glossary_for(lang)
+        return json.dumps(view, ensure_ascii=False, indent=2)
 
     def _capped_summary(self) -> str:
         """滚动摘要只送最近一段，避免它无限膨胀后每章重发（长篇成本大头之一）。"""
@@ -89,9 +114,9 @@ class MemoryStore:
             return "…" + s[-CONTEXT_SUMMARY_CHARS:]
         return s
 
-    def compact_context_string(self) -> str:
+    def compact_context_string(self, lang: str = "en") -> str:
         """
-        供 Extractor / Translator 使用的**有界**上下文。
+        供 Extractor / Translator 使用的**有界**上下文。glossary 只给当前目标语言那一份。
 
         它们不需要完整历史——只需要"已有哪些实体、术语怎么译、最近讲到哪"。所以这里只给：
         当前属性（丢掉 state_history）+ 完整 glossary（一致性靠它，且实体数会饱和）+ 封顶摘要，
@@ -108,11 +133,11 @@ class MemoryStore:
             "characters": attrs_only(self.data["characters"]),
             "locations": attrs_only(self.data["locations"]),
             "organizations": attrs_only(self.data["organizations"]),
-            "glossary": self.data["glossary"],
+            "glossary": self.glossary_for(lang),
         }
         return json.dumps(view, ensure_ascii=False, indent=2)
 
-    def relevant_context_string(self, chapter_text: str) -> str:
+    def relevant_context_string(self, chapter_text: str, lang: str = "en") -> str:
         """
         只挑出当前章节实际涉及的Memory条目，供QA使用。
 
@@ -133,7 +158,7 @@ class MemoryStore:
         characters = {k: v for k, v in self.data["characters"].items() if mentioned(k)}
         locations = {k: v for k, v in self.data["locations"].items() if mentioned(k)}
         organizations = {k: v for k, v in self.data["organizations"].items() if mentioned(k)}
-        glossary = {k: v for k, v in self.data["glossary"].items() if mentioned(k)}
+        glossary = {k: v for k, v in self.glossary_for(lang).items() if mentioned(k)}
 
         relevant_entities = set(characters) | set(locations) | set(organizations)
         timeline = [
@@ -165,6 +190,17 @@ class MemoryStore:
         self.data.setdefault("extracted_chapters", [])
         if chapter not in self.data["extracted_chapters"]:
             self.data["extracted_chapters"].append(chapter)
+        self._save()
+
+    def is_glossary_extracted(self, chapter: int, lang: str) -> bool:
+        """该章是否已为某目标语言提议过 glossary（与语言无关的"理解抽取"分开计幂等）。"""
+        return chapter in self.data.get("glossary_extracted", {}).get(lang, [])
+
+    def mark_glossary_extracted(self, chapter: int, lang: str):
+        ge = self.data.setdefault("glossary_extracted", {})
+        chapters = ge.setdefault(lang, [])
+        if chapter not in chapters:
+            chapters.append(chapter)
         self._save()
 
     # ---------- 写入：只增长，不覆盖 ----------
@@ -230,25 +266,25 @@ class MemoryStore:
             record["attributes"].update(attributes)
         self._save()
 
-    def seed_glossary(self, terms: dict[str, str]):
+    def seed_glossary(self, terms: dict[str, str], lang: str):
         """
-        注入权威术语表（种子）。
+        为某个目标语言注入权威术语表（种子）。
 
         与 add_glossary_terms 的"只增不改"刻意相反：种子是人工策划的 ground truth，
         应当覆盖 Extractor 之前的首次猜测——所以这里是"设置/覆盖"，不是"仅新增"。
         用于在跑之前给 Memory 一个高质量初始状态，让被冻结、被一致传播的译名从一开始就对。
         """
-        glossary = self.data["glossary"]
+        glossary = self.data["glossary"].setdefault(lang, {})
         for term, translation in terms.items():
             glossary[term] = translation
         self._save()
 
-    def add_glossary_terms(self, terms: dict[str, str]):
-        """术语只增不改：如果术语已存在且译法不同，保留原有译法，
+    def add_glossary_terms(self, terms: dict[str, str], lang: str):
+        """某目标语言的术语只增不改：如果术语已存在且译法不同，保留原有译法，
         避免QA阶段出现"同一术语前后翻译不一致"却又被静默改掉、无法追溯的情况。
         真正的译法冲突应该被QA阶段发现并报告，而不是在这里被覆盖掩盖。
         """
-        glossary = self.data["glossary"]
+        glossary = self.data["glossary"].setdefault(lang, {})
         for term, translation in terms.items():
             if term not in glossary:
                 glossary[term] = translation

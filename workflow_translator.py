@@ -16,26 +16,52 @@ memory传None时（对照实验用，验证"Memory到底有没有用"），
 from typing import Optional
 
 from llm_client import LLMClient
+from languages import Language
 from memory_store import MemoryStore
 
 
-TRANSLATOR_SYSTEM_PROMPT = """你是一个专业的中译英小说译者。
+def _translator_system_prompt(lang: Language) -> str:
+    return f"""你是一个专业的中译{lang.zh_name}小说译者。
 你只能看到当前这一章的原文，看不到其他章节的原文 ——
 所有关于人物、地点、专有名词译法的历史信息，都必须从下面提供的Memory中获取。
 
 翻译要求：
+- 目标语言是{lang.endonym}，译文必须全部使用{lang.endonym}，不得残留中文，也不要夹杂其他语言。
 - 术语翻译必须严格遵循Memory中glossary里已有的译法，保持一致性。
 - 人物称呼、境界等级的翻译要参考Memory中characters里的既有信息。
 - 只输出翻译结果本身，不要输出任何解释或说明。
 
 译法规范（避免直译/误译）：
-- 成语、歇后语、惯用语不要按字面直译，要译成英文读者能看懂的对应说法。
-  例：背黑锅 → take the blame / be the scapegoat（不是 "bear a black pot"）；
-      待价而沽 → hold out for a better offer；天无二日 → there can't be two suns.
-- “火影”指动漫《火影忍者》这部作品时，译作 Naruto；只有指“火影”这个职位时才译 Hokage。
-- 穿越设定里的“原身/原主”指这具身体原来的主人，不要译成 predecessor（前任），
-  可译 the body's original owner 之类。
+- 成语、歇后语、惯用语不要按字面直译，要译成{lang.endonym}读者能看懂的对应说法。
+- 专有名词若Memory里已有译法一律沿用；没有的按该语言习惯统一音译或意译，并前后一致。
+{lang.translator_notes}
 """
+
+
+def _title_system_prompt(lang: Language) -> str:
+    return f"""你是小说章节标题翻译。把中文章节标题译成自然、有吸引力的{lang.endonym}章节标题。
+
+要求：
+- 目标语言是{lang.endonym}，标题必须全部使用{lang.endonym}，绝不残留中文。
+- 人物/术语必须用下面Memory里已确立的译法。
+- 保留开头的章节序号，译成 "{lang.chapter_label} N: ..." 的形式（如 "031 ..." → "{lang.chapter_label} 31: ..."）。
+- 删掉中文网文的作者话（如"求月票""加更""二合一大章"之类），不要译进标题。
+- 成语/网络梗不要字面直译，用{lang.endonym}读者能懂的说法。
+- 只输出翻译后的标题这一行，不要引号、不要解释。
+{lang.title_notes}
+"""
+
+
+def translate_title(client: LLMClient, memory: MemoryStore, title: str, lang: Language) -> str:
+    user_prompt = f"""Memory（术语/人名参考，务必沿用其中的{lang.endonym}译法）：
+{memory.compact_context_string(lang.code)}
+
+---
+
+请翻译这个章节标题：
+{title}
+"""
+    return client.complete(_title_system_prompt(lang), user_prompt, temperature=0.2).strip()
 
 
 def translate_chapter(
@@ -43,9 +69,10 @@ def translate_chapter(
     memory: Optional[MemoryStore],
     chapter_index: int,
     chapter_text: str,
+    lang: Language,
 ) -> str:
     memory_context = (
-        memory.compact_context_string()
+        memory.compact_context_string(lang.code)
         if memory is not None
         else "（无——本次不提供Memory，术语和人物译法请自行判断）"
     )
@@ -57,4 +84,4 @@ def translate_chapter(
 请翻译第{chapter_index}章：
 {chapter_text}
 """
-    return client.complete(TRANSLATOR_SYSTEM_PROMPT, user_prompt, temperature=0.3)
+    return client.complete(_translator_system_prompt(lang), user_prompt, temperature=0.3)

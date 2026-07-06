@@ -22,6 +22,7 @@ Workflow 4: QA
 from typing import Optional
 
 from llm_client import LLMClient
+from languages import Language
 from memory_store import MemoryStore
 
 
@@ -36,17 +37,18 @@ QA_RETRY_MAX_TOKENS = 4096
 ALLOWED_TYPES = {"术语不一致", "称呼不一致", "设定冲突"}
 
 
-QA_SYSTEM_PROMPT = """你是一个翻译质量检查员。
-你会拿到一章的英文译文和当前的Memory（人物/术语库/时间线/State记录，key是中文原文）。
+def _qa_system_prompt(lang: Language) -> str:
+    return f"""你是一个翻译质量检查员。
+你会拿到一章的{lang.zh_name}译文和当前的Memory（人物/术语库/时间线/State记录，key是中文原文）。
 
 重要前提，不要弄反：
-Memory里的key是中文原文（如"猿飞日斩"），译文本来就该译成英文（如"Hiruzen Sarutobi"），
-这不是问题。你要检查的是"译文用的英文译法，是否和该术语/人物在Memory里已确立的英文译法一致"。
-第一次出现、还没有历史英文译法可参照的，不算问题。
+Memory里的key是中文原文（如"猿飞日斩"），译文本来就该译成{lang.endonym}，这不是问题。
+你要检查的是"译文用的{lang.endonym}译法，是否和该术语/人物在Memory的glossary里已确立的译法一致"。
+第一次出现、还没有历史译法可参照的，不算问题。
 
 你只能检查以下三类问题，除此之外一律不报：
-1. 术语不一致：同一中文术语的英文译法与Memory已有先例不同。
-2. 称呼不一致：同一人物英文称呼前后不一致，或与Memory已确立译名不符。
+1. 术语不一致：同一中文术语的{lang.endonym}译法与Memory已有先例不同。
+2. 称呼不一致：同一人物{lang.endonym}称呼前后不一致，或与Memory已确立译名不符。
 3. 设定冲突：译文与Memory的State记录矛盾（如某角色已死却仍行动）。
 
 检查范围硬约束（必须遵守）：
@@ -56,7 +58,7 @@ Memory里的key是中文原文（如"猿飞日斩"），译文本来就该译成
 - 如果一个问题不属于上述三类，直接不要输出它。
 - type字段只能是"术语不一致""称呼不一致""设定冲突"三者之一，不得填别的值。
 
-以下属于正常小说写法，不算不一致，不要报（避免误报）：
+以下属于正常小说写法，不算不一致，不要报（避免误报，以下以英文为例，其他语言同理）：
 - 用全名里的一部分（名 或 姓）来称呼，而非每次都用全名（如只写 "Asuma"/"Kakashi"，
   不必是 "Asuma Sarutobi"/"Kakashi Hatake"）——这是正常的。
 - 用称谓/头衔指代人物（如把 Hiruzen Sarutobi 称作 "the Third Hokage"、"Lord Hokage"）。
@@ -75,10 +77,10 @@ Memory里的key是中文原文（如"猿飞日斩"），译文本来就该译成
 - 只返回严格JSON，不要markdown代码块，不要JSON之外的任何文字。
 
 输出格式（只有这一种）：
-{"issues": [{"type": "术语不一致/称呼不一致/设定冲突", "description": "简短问题描述", "severity": "high/medium/low"}]}
+{{"issues": [{{"type": "术语不一致/称呼不一致/设定冲突", "description": "简短问题描述", "severity": "high/medium/low"}}]}}
 
 没有发现问题时，返回：
-{"issues": []}
+{{"issues": []}}
 """
 
 
@@ -95,6 +97,7 @@ def run_qa(
     memory: MemoryStore,
     chapter_index: int,
     translated_text: str,
+    lang: Language,
     chapter_text: Optional[str] = None,
 ) -> dict:
     """
@@ -102,9 +105,9 @@ def run_qa(
     不传则退回喂完整Memory（旧行为），但会更容易触发便宜模型的输出膨胀问题。
     """
     memory_context = (
-        memory.relevant_context_string(chapter_text)
+        memory.relevant_context_string(chapter_text, lang.code)
         if chapter_text is not None
-        else memory.as_context_string()
+        else memory.as_context_string(lang.code)
     )
     user_prompt = f"""Memory（仅本章相关条目）：
 {memory_context}
@@ -117,7 +120,7 @@ def run_qa(
 
     try:
         result = client.complete_json(
-            QA_SYSTEM_PROMPT, user_prompt, temperature=0.1, max_tokens=QA_MAX_TOKENS
+            _qa_system_prompt(lang), user_prompt, temperature=0.1, max_tokens=QA_MAX_TOKENS
         )
     except ValueError:
         # 第一次输出不是合法JSON（便宜模型偶尔重复退化/被截断），换更短更硬的prompt重试一次。

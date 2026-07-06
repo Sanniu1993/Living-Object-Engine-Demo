@@ -16,39 +16,26 @@ Workflow 5: Reviser（修订）
 """
 
 import json
-import re
 from typing import Optional
 
 from llm_client import LLMClient
+from languages import Language, find_untranslated_source
 from memory_store import MemoryStore
 
-
-_CJK_RE = re.compile(r"[一-鿿]+")
-
-
-def find_untranslated_cjk(text: str) -> list[str]:
-    """
-    确定性地找出译文里残留的中文片段（DeepSeek 偶发漏译）。
-
-    这是对 LLM 判官的补充：判官管语义一致性，这个正则管"有没有中文没翻干净"——
-    后者确定性可判、不用花钱，却是判官的盲区。返回去重后的中文片段列表。
-    """
-    seen, out = set(), []
-    for frag in _CJK_RE.findall(text):
-        if frag not in seen:
-            seen.add(frag)
-            out.append(frag)
-    return out
+# 残留源语言（中文）检测统一收敛到 languages.py。这里保留旧名 find_untranslated_cjk
+# 作为别名，避免调用方大改；语义就是"译文里没翻干净的源语言片段"。
+find_untranslated_cjk = find_untranslated_source
 
 
-REVISER_SYSTEM_PROMPT = """你是一个译文修订员。
-你会拿到：一章的英文译文、一份QA问题清单、以及Memory（术语库/人物，key是中文原文）。
+def _reviser_system_prompt(lang: Language) -> str:
+    return f"""你是一个译文修订员。
+你会拿到：一章的{lang.zh_name}译文、一份QA问题清单、以及Memory（术语库/人物，key是中文原文）。
 
 你的唯一任务：把QA清单里列出的问题逐一改好，产出修订后的完整译文。
 
 严格规则：
-- 只修改QA清单点名的问题（主要是术语/人物称呼的英文译法不一致、与设定冲突）。
-- 统一到Memory里已确立的英文译法；同一术语/人物在全章保持同一种英文写法。
+- 只修改QA清单点名的问题（主要是术语/人物称呼的{lang.endonym}译法不一致、与设定冲突）。
+- 统一到Memory里已确立的{lang.endonym}译法；同一术语/人物在全章保持同一种写法。
 - 不要重新翻译，不要润色，不要改动没被点名的句子和文风。
 - 不要新增或删减剧情内容。
 - 只输出修订后的完整译文正文，不要输出任何解释、注释、markdown或JSON。
@@ -61,6 +48,7 @@ def revise_translation(
     chapter_index: int,
     translated_text: str,
     issues: list[dict],
+    lang: Language,
     chapter_text: Optional[str] = None,
 ) -> str:
     """
@@ -70,13 +58,13 @@ def revise_translation(
         return translated_text
 
     memory_context = (
-        memory.relevant_context_string(chapter_text)
+        memory.relevant_context_string(chapter_text, lang.code)
         if chapter_text is not None
-        else memory.as_context_string()
+        else memory.as_context_string(lang.code)
     )
     issues_text = json.dumps(issues, ensure_ascii=False, indent=2)
 
-    user_prompt = f"""Memory（术语/人物已确立的英文译法，供统一时参照）：
+    user_prompt = f"""Memory（术语/人物已确立的{lang.endonym}译法，供统一时参照）：
 {memory_context}
 
 ---
@@ -90,4 +78,4 @@ QA发现的问题清单（逐一改好）：
 {translated_text}
 """
     # 修订是"照清单改词"的确定性任务，用低温度让改动更克制、可复现。
-    return client.complete(REVISER_SYSTEM_PROMPT, user_prompt, temperature=0.1)
+    return client.complete(_reviser_system_prompt(lang), user_prompt, temperature=0.1)
