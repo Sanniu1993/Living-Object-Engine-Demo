@@ -32,35 +32,44 @@ CHAPTER_PATTERN = re.compile(
 # 注意"收藏"单独出现有歧义（剧情里也可能收藏东西），因此只收强信号词组。
 _AUTHOR_NOTE_MARKERS = re.compile(
     r"月票|推荐票|追读|求订阅|求收藏|求鲜花|求评价|求打赏|打赏|跪求|跪谢|拜托|"
-    r"求支持|求推荐|新书求|二合一|作者的话|作者君|码字|订阅一下|各位读者老爷|书友"
+    r"求支持|求推荐|新书求|二合一|作者的话|作者君|码字|订阅一下|各位读者老爷|书友|"
+    r"第[0-9零一二三四五六七八九十两百]+更|加更|明天见|晚安"
 )
 # 段首出现这些前缀也判为作者话（PS/P.S./作者：等）。
 _AUTHOR_NOTE_PREFIX = re.compile(r"^\s*(PS[：:.\s]|P\.S|作者[：:]|【作者)", re.IGNORECASE)
 # 纯分隔线/纯标点段落（——、----、***、===、。！ 等），末尾出现时属于排版残留，可安全清掉。
 _SEP_ONLY = re.compile(r"^[\s\-—–~*=·.。!！,，、]+$")
+# 长破折号分界线（——————/----/====，≥4 个）：网文作者惯用它把正文和文末后记隔开。
+_DASH_SEP = re.compile(r"^[\s\-—–_=]{4,}$")
 
 
 def strip_author_notes(content: str) -> str:
     """
-    删掉章节里的作者话段落（求月票/求收藏/追读/拜托之类），只删"整段是作者话"的段落，
-    不碰正常剧情。判据：段落命中强信号词组，或以 PS/作者 之类前缀开头。
-    收尾再把末尾遗留的纯分隔线/纯标点段落（作者话常跟在一条"——"分隔线后）清掉。
-    这是确定性处理，几乎免费、且全语言受益。
+    删掉章节里的作者话，不碰正常剧情。三道：
+    1) 文末后记块：若末尾几段里有一条"长破折号分界线"，把它及其后的一切整体砍掉
+       （作者后记常跟在 —————— 之后，且往往不含求票词、靠关键词抓不到）。
+    2) 逐段作者话：短段落命中乞讨/更新等关键词，或以 PS/作者 开头，删。
+    3) 收尾清掉遗留的纯分隔线段落。
+    确定性处理，几乎免费、全语言受益。
     """
-    paragraphs = re.split(r"\n\s*\n", content)
+    paras = [p.strip() for p in re.split(r"\n\s*\n", content) if p.strip()]
+
+    # 1) 砍掉"长破折号分界线 + 其后后记"整块。只在末尾 3 段内找分界线，
+    #    避免误伤正文中间可能用作场景切换的破折号。
+    for idx in range(len(paras) - 1, max(-1, len(paras) - 4), -1):
+        if _DASH_SEP.match(paras[idx]):
+            paras = paras[:idx]
+            break
+
+    # 2) 逐段作者话过滤（只删短段落，长段落更可能是正文，从严保护，不误删）。
     kept = []
-    for para in paragraphs:
-        p = para.strip()
-        if not p:
-            continue
-        is_author_note = bool(_AUTHOR_NOTE_PREFIX.match(p)) or bool(_AUTHOR_NOTE_MARKERS.search(p))
-        # 只删"短段落"里的作者话：作者话通常一两句。长段落即使碰巧含关键词，
-        # 也更可能是正文（比如剧情真的在讲"更新换代"），从严保护正文，不误删。
-        if is_author_note and len(p) <= 60:
+    for p in paras:
+        is_note = bool(_AUTHOR_NOTE_PREFIX.match(p)) or bool(_AUTHOR_NOTE_MARKERS.search(p))
+        if is_note and len(p) <= 60:
             continue
         kept.append(p)
 
-    # 清掉末尾遗留的纯分隔线/纯标点段落（如作者话删掉后剩下的那条 "——"）。
+    # 3) 清掉末尾遗留的纯分隔线/纯标点段落。
     while kept and _SEP_ONLY.match(kept[-1]):
         kept.pop()
 

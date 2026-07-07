@@ -1,0 +1,191 @@
+[
+  {
+    "issues": [
+      {
+        "type": "术语不一致",
+        "description": "Translation uses \"Cloud\" to refer to 云隐村, but glossary specifies \"Kumogakure\".",
+        "severity": "medium"
+      }
+    ],
+    "passed": false,
+    "note": "修复后未复查；上面列的是修复前发现的问题",
+    "fluency": {
+      "issues": [
+        {
+          "type": "语法错误",
+          "quote": "Hiruzen, you still haven't said how we're going to use them...\" Danzo Shimura asked impatiently.",
+          "description": "The dialogue punctuation is off: the closing quotation mark precedes the attribution without a comma, making the sentence awkward. It should be punctuated with a comma before the closing quote and the dialogue tag outside. Suggested: \"Hiruzen, you still haven't said how we're going to use them,\" Danzo Shimura asked impatiently.",
+          "severity": "high"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "He pulled out the necklace from his chest.",
+          "description": "Literal phrasing suggests pulling a necklace from inside his chest. Idiomatically, it should be \"from his shirt\" or \"from inside his robes.\" Suggested: \"He pulled the necklace out from under his shirt.\"",
+          "severity": "high"
+        },
+        {
+          "type": "语法错误",
+          "quote": "Hizashi naturally picked one up.",
+          "description": "This sentence introduces Hizashi abruptly without prior context in the scene, creating a referential gap that reads like a dangling subject. Clarify who Hizashi is or add a brief identifier. Suggested: \"Hizashi Hyuga naturally picked one up\" or \"Hizashi, who stood nearby, naturally picked one up.\"",
+          "severity": "medium"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "It was like listening to a storyteller, but the narrator had taken a sip of tea and deliberately refused to continue the next part... Such a tease!",
+          "description": "The imagery and phrasing feel calqued and awkward (\"the narrator had taken a sip of tea and deliberately refused to continue the next part\"). A more idiomatic rendering would streamline the metaphor. Suggested: \"It was like listening to a storyteller who paused to sip tea and refused to continue... Such a tease!\"",
+          "severity": "medium"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "Even if he had made mistakes.",
+          "description": "This fragment stands alone without a main clause, reading like an incomplete thought. Combine it with the previous sentence or complete it. Suggested: \"Even if he had made mistakes, ...\" or attach it to the following sentence for coherence.",
+          "severity": "medium"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "or2!!!",
+          "description": "This appears to be untranslated internet slang/emoji-like text and is unclear to English readers. Either localize or clarify. Suggested: replace with an equivalent like \"orz!!!\" if intentional, or provide a clear phrase like \"Please vote!\"",
+          "severity": "medium"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "Don't ride on their coattails!",
+          "description": "As a standalone interjection, this reads abrupt and idiomatically mismatched to the prior sentence. Clarify the subject or integrate it. Suggested: \"Don't try to ride on their coattails,\" or fold it into the sentence: \"They shouldn't try to ride on the Uchiha's coattails.\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "He could loosely interpret them as the 'Mist version' of the Uchiha, only even less popular.",
+          "description": "\"Only even less popular\" is clunky. A more idiomatic phrasing would be: \"—a Mist version of the Uchiha, only even less well-regarded.\" or \"...a Mist-side counterpart to the Uchiha, but even less popular.\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "The entanglements were too deep to explain in just a few words.",
+          "description": "\"Entanglements\" sounds literal and awkward here. A more idiomatic expression would be: \"The ties were too complicated to explain briefly.\" or \"The complications ran too deep to summarize in a few words.\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "Go argue that with the Empress Dowager herself!",
+          "description": "\"Empress Dowager\" feels like a borrowed cultural term and reads odd without context. If meant metaphorically, clarify or choose a more fitting title. Suggested: \"Go argue that with the matriarch herself!\" or \"…with Lady Mito herself!\"",
+          "severity": "low"
+        },
+        {
+          "type": "语法错误",
+          "quote": "Kakashi, with a strangely serene look in his eyes, was earnestly reading the sword technique notes his father had given him.",
+          "description": "While grammatical, \"the sword technique notes\" is awkwardly literal. For idiomatic clarity, add an article or rephrase: \"the notes on sword techniques his father had given him\" or \"his father's swordsmanship notes.\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "Happy New Year's Day, second chapter! There will be another chapter around noon, maybe a little later.",
+          "description": "Reads like a direct author aside with literal phrasing. If kept as an author note, make it idiomatic: \"Happy New Year—here's the second chapter! Another will be out around noon, maybe a bit later.\"",
+          "severity": "low"
+        }
+      ],
+      "passed": false
+    },
+    "chapter": 50
+  },
+  {
+    "issues": [],
+    "passed": true,
+    "fluency": {
+      "issues": [
+        {
+          "type": "语法错误",
+          "quote": "You're afraid that after you graduate, you'll have no rival in me and get lonely...",
+          "description": "The phrase \"have no rival in me\" is unidiomatic here. It reads awkwardly and blurs the intended meaning. A natural fix: \"You'll be afraid that after you graduate, you won't have a rival like me and you'll get lonely,\" or \"you won't have me as a rival and you'll get lonely.\"",
+          "severity": "high"
+        },
+        {
+          "type": "语法错误",
+          "quote": "Who could resist a companion who blushes while praising how awesome you are when sneaking a peek at you fishing?",
+          "description": "Pronoun reference and clause order are tangled. It reads as if \"you\" is the one sneaking a peek. Clearer: \"Who could resist a companion who blushes while praising how awesome you are as he sneaks peeks at you fishing?\"",
+          "severity": "high"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "Some people are just naturally drawn to each other.",
+          "description": "While grammatical, in this context following the prior sentence, it feels like a generic proverb inserted as a literal bridge, giving a translated, didactic tone. A more idiomatic segue: \"Some people just click,\" or \"Some people just hit it off.\"",
+          "severity": "medium"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "a hot-blooded dead last",
+          "description": "\"Dead last\" is fine, but “hot-blooded dead last” sounds like a calque. More natural would be \"a hotheaded underachiever\" or \"a hotheaded loser (at the bottom of the class).\"",
+          "severity": "medium"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "He often called out Obito, who was sneaking peeks from hiding, and invited him to eat together.",
+          "description": "“sneaking peeks from hiding” is stiff and literal. Also, \"invited him to eat together\" is awkward. More natural: \"He often called Obito out when he caught him spying and invited him to grab a bite together,\" or \"...and invited him to eat with him.\"",
+          "severity": "medium"
+        },
+        {
+          "type": "语法错误",
+          "quote": "Kakashi put down the sword technique notes in his hand, his calm gaze shifting to a hint of melancholy, and spoke in a tone that sounded like a little adult:",
+          "description": "\"like a little adult\" is odd, and the sentence structure is clunky. Also, \"the sword technique notes in his hand\" is awkward. Suggested: \"Kakashi set down his swordsmanship notes, his calm gaze shading into melancholy, and spoke in a tone that sounded far too adult.\"",
+          "severity": "medium"
+        },
+        {
+          "type": "语法错误",
+          "quote": "Although the academy hadn't yet implemented an elite advanced class, objectively speaking, a clique had already formed.",
+          "description": "\"elite advanced class\" is redundant and awkward, and \"objectively speaking\" is stiff filler. Consider: \"Although the academy hadn't implemented an advanced elite class yet, cliques had already formed.\" Also ensure plural agreement if multiple cliques are implied.",
+          "severity": "medium"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "That Guy guy seemed to really admire that blond...",
+          "description": "Repetition and article use are awkward. If playing on the name \"Guy,\" better: \"That Guy seemed to really admire that blond(e)...\" or \"Guy really seemed to admire that blond(e) guy...\"",
+          "severity": "medium"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "lacking a sense of boundaries.",
+          "description": "This phrase feels clinical and translated in this casual narrative. More idiomatic: \"with zero sense of boundaries\" or \"without any sense of boundaries,\" or even \"no concept of boundaries.\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "So even before graduation, the bond between the three of them was as tight as a fully formed three-man squad.",
+          "description": "\"fully formed three-man squad\" sounds like a literal import from another language/anime term. A smoother phrasing: \"as tight as an actual three-man team\" or \"as tight as a real squad.\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "Eh?",
+          "description": "As a standalone interjection, \"Eh?\" reads as a direct carryover from another language and can feel unnatural in English narrative here. More idiomatic: \"Huh?\" or \"What?\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "Even though I hate to admit it, you're definitely someone worth surpassing.",
+          "description": "Literal and stilted; native phrasing would be: \"Even though I hate to admit it, you're definitely someone worth beating,\" or \"worth aiming to surpass.\"",
+          "severity": "low"
+        },
+        {
+          "type": "语法错误",
+          "quote": "\"Most? I don't know if that guy counts as an ordinary chunin...\"",
+          "description": "\"Most?\" as a standalone echo of \"Most chunin\" is unclear. Better: \"Most? I don't know if that guy even counts as an ordinary chunin...\" or \"Most? I’m not sure that guy counts as a typical chunin...\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "his full-force sneak attack didn't even touch a hair on his head",
+          "description": "Calque-like phrasing. More idiomatic: \"his all-out sneak attack didn't even graze him\" or \"didn't so much as ruffle a hair.\"",
+          "severity": "low"
+        },
+        {
+          "type": "生硬直译",
+          "quote": "His youth burns like a little sun!",
+          "description": "Literal transcreation that reads odd in English. A more natural line that keeps the flavor: \"His youthful spirit burns like a little sun!\" or \"His youth burns like the sun!\"",
+          "severity": "low"
+        }
+      ],
+      "passed": false
+    },
+    "chapter": 51
+  }
+]

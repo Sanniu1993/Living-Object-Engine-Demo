@@ -93,6 +93,8 @@ class Language:
     seed_file: str           # 该语言的权威术语表种子文件名（没有就留空串）
     idiom_seed_file: str = ""  # 该语言的成语/惯用语种子文件名（没有就留空串）
     max_sentence_words: int = 0  # 长句闸阈值（词数）；>此值的句子会被确定性拆分。0=关闭
+    latin_script: bool = True # 目标语是否用拉丁字母。决定 lint 把"哪种脚本"当外来残留：
+                              #   非拉丁(阿语)→ 残留拉丁(英文)是外来；拉丁(英/西)→ 反之
     rtl: bool = False        # 是否从右到左（阿拉伯语=True），目前仅作元信息
     translator_notes: str = ""   # 该语言特有的译法提示，拼进 translator prompt
     title_notes: str = ""        # 该语言特有的标题译法提示
@@ -148,6 +150,7 @@ LANGUAGES: dict[str, Language] = {
         seed_file="seed_glossary_ar.json",
         idiom_seed_file="seed_idioms_ar.json",
         max_sentence_words=30,   # 阿语读者短句优先：打掉 >30 词的 run-on（实测这是长尾 ~0.6%）
+        latin_script=False,      # 阿语非拉丁：残留英文/拉丁 token 才是外来
         rtl=True,
         translator_notes=_AR_TRANSLATOR_NOTES,
         title_notes="",              # 标题人名/术语走 glossary，通用规则已够

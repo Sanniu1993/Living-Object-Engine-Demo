@@ -21,7 +21,8 @@ import re
 from languages import get_language, find_untranslated_source
 from memory_store import MemoryStore
 
-_LATIN_RE = re.compile(r"[A-Za-z]{2,}")
+_LATIN_RE = re.compile(r"[A-Za-z]{2,}")          # 拉丁字母串
+_ARABIC_RE = re.compile(r"[؀-ۿ]{2,}")  # 阿拉伯字母串
 _TOKEN_RE = re.compile(r"[^\s«».,،؛:!؟\"'()\[\]]+")
 
 
@@ -82,10 +83,16 @@ def find_name_blends(text: str, memory: MemoryStore, lang_code: str) -> list[str
     return out
 
 
-def find_foreign(text: str) -> list[str]:
-    """夹带的拉丁字母(英文)token —— 目标语是阿语，不该出现整串英文单词（如漏译的 Subjects）。"""
+def find_foreign(text: str, lang) -> list[str]:
+    """
+    夹带的"外来脚本"token（按目标语脚本自适应）：
+    - 非拉丁目标(阿语)：残留整串拉丁字母(英文)才是外来，如漏译的 Subjects/sake。
+    - 拉丁目标(英/西)：英文本就是拉丁，不能当外来；此时反过来查残留阿拉伯字母。
+    源语言中文(CJK)始终另由 find_untranslated_source 检测，不在此列。
+    """
+    pattern = _ARABIC_RE if lang.latin_script else _LATIN_RE
     seen, out = set(), []
-    for m in _LATIN_RE.findall(text):
+    for m in pattern.findall(text):
         if m not in seen:
             seen.add(m)
             out.append(m)
@@ -98,12 +105,15 @@ def run_lint(text: str, memory: MemoryStore, lang) -> list[tuple]:
     cjk = find_untranslated_source(text)
     if cjk:
         findings.append(("残留中文", cjk))
-    foreign = find_foreign(text)
+    foreign = find_foreign(text, lang)
     if foreign:
         findings.append(("夹带外语", foreign))
-    blends = find_name_blends(text, memory, lang.code)
-    if blends:
-        findings.append(("疑似人名污染", blends))
+    # 人名污染的头/尾启发式在拉丁文里易误伤(普通英文词碰巧撞名字头尾，如 standing)，
+    # 只在非拉丁目标(音译名很独特)启用；拉丁目标的名字错交给流畅度判官。
+    if not lang.latin_script:
+        blends = find_name_blends(text, memory, lang.code)
+        if blends:
+            findings.append(("疑似人名污染", blends))
     hit = [w for w in load_rules(lang.code).get("replace", {}) if w in text]
     if hit:
         findings.append(("已知错误短语(可--fix自动改)", hit))
