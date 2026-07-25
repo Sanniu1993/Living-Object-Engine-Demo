@@ -6,15 +6,18 @@
 
 | 文件 | 对应角色 |
 |---|---|
-| `llm_client.py` | 模型调用层，可插拔。现在只实现OpenAI，换provider只改这一个文件 |
-| `memory_store.py` | Living Object的核心：单一`memory.json`，只增长不覆盖，State作为跨行业通用记录结构 |
-| `splitter.py` | Workflow 1: Chapter Reader |
-| `workflow_extractor.py` | Workflow 2: Memory Extractor（只理解，不翻译） |
-| `workflow_translator.py` | Workflow 3: Translator（只消费Memory，不重新分析全文） |
-| `workflow_qa.py` | Workflow 4: QA（检查术语/称呼一致性、设定冲突） |
-| `workflow_reviser.py` | Workflow 5: Reviser（按QA清单修订译文，产出定稿，仅`--revise`时启用） |
-| `main.py` | 主循环，一个for循环走完四步；额外支持 `--ab-test` 对照实验和 `--revise` 定稿闭环 |
-| `verify.py` | 验证脚本，直接检验上面那句"验证目标" |
+| `llm_client.py` | 模型调用层，可插拔。按角色配模型（翻译用便宜的 deepseek，判官用 gpt-5），支持 reasoning_effort |
+| `memory_store.py` | Living Object 核心：单一 `memory.json`，只增长不覆盖。理解语言无关（跨语言共用），glossary/idioms 按语言分区 |
+| `languages.py` | 多语言插口（en/ar/es）：语言名/章节标题词/长句阈值/脚本/种子文件。加语言只改这里 |
+| `splitter.py` | Workflow 1: 切章 + L0 确定性删作者话/文末后记 |
+| `workflow_extractor.py` | Workflow 2: Memory Extractor（只理解，不翻译；顺带按目标语提议 glossary/idioms） |
+| `workflow_translator.py` | Workflow 3: Translator（只消费 Memory，不重新分析全文） |
+| `workflow_qa.py` | Workflow 4: 一致性 QA 判官（术语/称呼一致性、设定冲突） |
+| `workflow_review.py` | Workflow 5: 流畅度审校判官（单语视角查语法/生硬直译/前后矛盾，`--fluency` 时启用） |
+| `workflow_reviser.py` | Workflow 6: Reviser（按 QA/审校清单修订译文，`--revise`/`--fluency` 时启用） |
+| `lint.py` | 确定性体检（残留源语言/夹带外语/人名污染/近似错拼），免费、每次跑、结果稳定 |
+| `main.py` | 主循环，串起整条流水线。`--target-lang` 选语言、`--start/--limit` 选章节区间、`--revise` 定稿、`--fluency` 流畅度审校、`--ab-test` 对照实验 |
+| `verify.py` / `check_name_collisions.py` | 验证/防呆脚本 |
 
 ## 快速开始
 

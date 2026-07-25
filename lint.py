@@ -83,6 +83,85 @@ def find_name_blends(text: str, memory: MemoryStore, lang_code: str) -> list[str
     return out
 
 
+def _levenshtein(a: str, b: str, maxd: int = 2) -> int:
+    """有界编辑距离：长度差已超 maxd 直接短路返回 maxd+1，否则标准 DP。"""
+    if abs(len(a) - len(b)) > maxd:
+        return maxd + 1
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        best = i
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            v = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+            cur.append(v)
+            best = min(best, v)
+        if best > maxd:      # 该行最小值已超上界，后面不可能更小
+            return maxd + 1
+        prev = cur
+    return prev[-1]
+
+
+_TYPO_STRIP = "«».,،؛:!؟?？;；\"'()-…“”‘’、"
+
+
+def _norm_word(w: str) -> str:
+    """剥掉首尾标点 + 尾部所有格('s/'s)，得到纯词，供名字比对。"""
+    w = w.strip(_TYPO_STRIP)
+    for suf in ("'s", "’s", "'S", "’S"):
+        if w.endswith(suf):
+            w = w[:-2]
+            break
+    return w
+
+
+def _person_name_tokens(memory: MemoryStore, lang_code: str, minlen: int = 5) -> set:
+    """
+    近似错拼检测的基准词典：**只取人物名**（glossary 里 key 是 characters 实体的那些值）。
+    刻意不含招式/组织名——那些会拆出 Release/Village/Force 之类普通词，撞得满屏误报。
+    人物名是音译专名（Hiruzen/Orochimaru…），和普通英文词几乎不可能撞。
+    """
+    char_keys = set(memory.as_dict().get("characters", {}))
+    glossary = memory.glossary_for(lang_code)
+    names = set()
+    for zh in char_keys:
+        for w in str(glossary.get(zh, "")).split():
+            w = _norm_word(w)
+            if len(w) >= minlen:
+                names.add(w)
+    return names
+
+
+def find_name_typos(text: str, memory: MemoryStore, lang) -> list[str]:
+    """
+    疑似人名错拼/错译：某 token 与某个 canonical **人物名**编辑距离 1~2、但不完全相同。
+    抓 Hirzen(≈Hiruzen)、Biruho(≈Hiruko) 这类——lint 和 QA 都盯不住的单名拼写坑。
+    降误报：只比人物名（见 _person_name_tokens）、token≥6、长度相近、拉丁目标只查大写专名。
+    返回 "错拼→建议" 列表。
+    """
+    names = _person_name_tokens(memory, lang.code)
+    if not names:
+        return []
+    seen, out = set(), []
+    for tok in set(_TOKEN_RE.findall(text)):
+        core = _norm_word(tok)
+        if len(core) < 6 or core in names or core in seen:
+            continue
+        if lang.latin_script and not core[:1].isupper():
+            continue
+        best, bd = None, 3
+        for nm in names:
+            if abs(len(nm) - len(core)) > 2:
+                continue
+            d = _levenshtein(core, nm, 2)
+            if 1 <= d < bd:
+                bd, best = d, nm
+        if best:
+            seen.add(core)
+            out.append(f"{core}→{best}")
+    return out
+
+
 def find_foreign(text: str, lang) -> list[str]:
     """
     夹带的"外来脚本"token（按目标语脚本自适应）：
@@ -114,6 +193,10 @@ def run_lint(text: str, memory: MemoryStore, lang) -> list[tuple]:
         blends = find_name_blends(text, memory, lang.code)
         if blends:
             findings.append(("疑似人名污染", blends))
+    # 名字近似错拼（两语通用；拉丁目标只查大写专名，控误报）
+    typos = find_name_typos(text, memory, lang)
+    if typos:
+        findings.append(("疑似人名错拼", typos))
     hit = [w for w in load_rules(lang.code).get("replace", {}) if w in text]
     if hit:
         findings.append(("已知错误短语(可--fix自动改)", hit))

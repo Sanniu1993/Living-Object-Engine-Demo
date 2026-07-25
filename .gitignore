@@ -1,10 +1,16 @@
 .env
 memory.json
+memory.json.bak
 qa_report.json
+qa_report_*.json
 translations/*.txt
 translations/**/*.txt
 __pycache__/
 *.pyc
+
+# 原始小说(输入数据，体积大、含版权，本地保留不入库)
+chapters/*.txt
+chapters/*.bak
 
 # 环境 / IDE / 系统
 .venv/

@@ -25,6 +25,7 @@ main.py
 import argparse
 import json
 import os
+import re
 from dotenv import load_dotenv
 
 from languages import (
@@ -59,7 +60,8 @@ def main():
     parser.add_argument("--memory-path", default="memory.json", help="Memory文件路径（多语言共用同一份理解）")
     parser.add_argument("--output-dir", default="translations", help="译文输出根目录（各语言落到 <root>/<lang>/）")
     parser.add_argument("--qa-report", default=None, help="QA报告输出路径（默认 qa_report_<lang>.json）")
-    parser.add_argument("--limit", type=int, default=None, help="只处理前N章（调试用）")
+    parser.add_argument("--limit", type=int, default=None, help="处理到第N章为止（章号上界）")
+    parser.add_argument("--start", type=int, default=1, help="从第N章开始处理（章号下界，默认1）")
     parser.add_argument(
         "--ab-test",
         action="store_true",
@@ -107,7 +109,9 @@ def main():
     chapters = load_and_split(args.input)
     if args.limit:
         chapters = chapters[: args.limit]
-    print(f"      共识别到 {len(chapters)} 章")
+    if args.start > 1:
+        chapters = [c for c in chapters if c.index >= args.start]
+    print(f"      本次处理 {len(chapters)} 章（{args.start}~{args.limit or '末'}）")
 
     client = get_client()          # 翻译/抽取：便宜的deepseek
     qa_client = get_client("qa")   # 一致性QA判官：可在.env里配成更强的模型
@@ -152,6 +156,7 @@ def main():
 
         print("  [翻译] 仅消费Memory，不重新分析全文...")
         translated = translate_chapter(client, memory, chapter.index, chapter.content, lang)
+        translated = _strip_leading_chapter_heading(translated)  # 去掉模型偶尔自加的 "Chapter N" 标题行
 
         print("  [QA] 检查一致性...")
         qa_result = run_qa(qa_client, memory, chapter.index, translated, lang, chapter.content)
@@ -226,6 +231,20 @@ def _review_fluency(judge_client, fix_client, memory, chapter, translated, lang)
         fix_client, memory, chapter.index, translated, issues, lang, chapter.content
     )
     return translated, result
+
+
+_CHAPTER_HEADING_RE = re.compile(r"^\s*[#*\s]*chapter\s+\d+[:：].*$|^\s*[#*\s]*chapter\s+\d+[#*\s]*$", re.IGNORECASE)
+
+
+def _strip_leading_chapter_heading(text: str) -> str:
+    """
+    去掉译文正文最前面模型偶尔自加的 "Chapter N" / "# Chapter N" / "**Chapter N**" 标题行。
+    标题另行单独生成，正文里重复一个是噪音（抽查 59-65 发现 5/7 章有）。只删最前面的连续几行。
+    """
+    paras = re.split(r"\n\s*\n", text)
+    while paras and _CHAPTER_HEADING_RE.match(paras[0].strip()):
+        paras.pop(0)
+    return "\n\n".join(paras)
 
 
 def _fix_long_sentences(client, memory, chapter, translated, lang, max_tries=2):

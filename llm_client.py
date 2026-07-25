@@ -128,7 +128,7 @@ def _build_client(provider: str, model: Optional[str], reasoning_effort: Optiona
     if provider == "deepseek":
         # DeepSeek便宜、API兼容OpenAI格式，调试阶段用它跑翻译/抽取。
         return OpenAIClient(
-            model=model or "deepseek-chat",
+            model=model or "deepseek-v4-flash",  # deepseek-chat 已于 2026-07 弃用
             api_key=os.environ.get("DEEPSEEK_API_KEY"),
             base_url="https://api.deepseek.com",
             reasoning_effort=reasoning_effort,

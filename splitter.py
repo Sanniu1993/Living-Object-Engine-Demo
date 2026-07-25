@@ -41,24 +41,39 @@ _AUTHOR_NOTE_PREFIX = re.compile(r"^\s*(PS[：:.\s]|P\.S|作者[：:]|【作者)
 _SEP_ONLY = re.compile(r"^[\s\-—–~*=·.。!！,，、]+$")
 # 长破折号分界线（——————/----/====，≥4 个）：网文作者惯用它把正文和文末后记隔开。
 _DASH_SEP = re.compile(r"^[\s\-—–_=]{4,}$")
+# 强后记标记：命中即认定"从这段起到章末都是作者后记/推书"，整块砍掉。
+# 只在章节末尾段落里找（后记永远在末尾），避免误伤正文。这些词正文几乎不会出现。
+_AFTERWORD_START = re.compile(
+    r"推一下|推荐一下|推几本|好朋友的书|老书|新书|万订|小饭|读者姥爷|读者老爷|"
+    r"爆肝|求月票|求推荐票|求订阅|[一二三四五六七八九十0-9]+更[!！。…]"
+)
 
 
 def strip_author_notes(content: str) -> str:
     """
-    删掉章节里的作者话，不碰正常剧情。三道：
-    1) 文末后记块：若末尾几段里有一条"长破折号分界线"，把它及其后的一切整体砍掉
-       （作者后记常跟在 —————— 之后，且往往不含求票词、靠关键词抓不到）。
+    删掉章节里的作者话，不碰正常剧情。四道：
+    0) 行级破折号分界：正文里第一条纯破折号行之后全是后记（章节已按"破折号+编号"切开，
+       正文内再现纯破折号行必是后记分界，哪怕它只用单换行黏在正文后）→ 从它起砍到章末。
+    1) 强后记标记：末尾 40% 段落里第一个"推书/后记"强标记（应对无破折号、无乞讨词的推书promo）。
     2) 逐段作者话：短段落命中乞讨/更新等关键词，或以 PS/作者 开头，删。
     3) 收尾清掉遗留的纯分隔线段落。
     确定性处理，几乎免费、全语言受益。
     """
+    # 0) 行级：第一条纯破折号分界线之后全砍。
+    lines = content.split("\n")
+    for i, ln in enumerate(lines):
+        if _DASH_SEP.match(ln.strip()):
+            lines = lines[:i]
+            break
+    content = "\n".join(lines)
+
     paras = [p.strip() for p in re.split(r"\n\s*\n", content) if p.strip()]
 
-    # 1) 砍掉"长破折号分界线 + 其后后记"整块。只在末尾 3 段内找分界线，
-    #    避免误伤正文中间可能用作场景切换的破折号。
-    for idx in range(len(paras) - 1, max(-1, len(paras) - 4), -1):
-        if _DASH_SEP.match(paras[idx]):
-            paras = paras[:idx]
+    # 1) 强后记标记：末尾 40% 段落里第一个命中，从那段整块砍到章末。
+    n = len(paras)
+    for i in range(max(0, int(n * 0.6)), n):
+        if _AFTERWORD_START.search(paras[i]):
+            paras = paras[:i]
             break
 
     # 2) 逐段作者话过滤（只删短段落，长段落更可能是正文，从严保护，不误删）。
