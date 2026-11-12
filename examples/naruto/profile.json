@@ -1,0 +1,30 @@
+{
+  "name": "naruto-fanfic",
+  "description": "作者自测用的那本火影同人网文（中文，穿越题材）。原文受版权保护，不随仓库分发；这里只保留种子词表、译法备注和实验结果。",
+  "languages": {
+    "en": {
+      "seed_glossary": "seed_glossary_en.json",
+      "translator_notes": [
+        "- \"火影\"指动漫《火影忍者》这部作品时，译作 Naruto；只有指\"火影\"这个职位时才译 Hokage。",
+        "- 穿越设定里的\"原身/原主\"指这具身体原来的主人，不要译成 predecessor（前任），",
+        "  可译 the body's original owner 之类。"
+      ],
+      "title_notes": [
+        "- 例：大蛇丸→Orochimaru、猿飞日斩→Hiruzen Sarutobi（以 Memory 为准）。"
+      ]
+    },
+    "ar": {
+      "seed_glossary": "seed_glossary_ar.json",
+      "seed_idioms": "seed_idioms_ar.json",
+      "lint_rules": "lint_ar.json",
+      "translator_notes": [
+        "- 本书常见例：\"十分有九分的不对劲\"→\"事情大有蹊跷\"（不是\"九成的缺陷\"）；",
+        "  \"做大蛋糕\"是\"把总盘子做大\"的经济比喻，不要字面译成\"烤个大蛋糕\"；",
+        "  \"丝滑小连招\"指某人惯用的说话套路/开场白，不是武打招式，别译成\"快速连击\"。"
+      ]
+    },
+    "es": {
+      "seed_glossary": "seed_glossary_es.json"
+    }
+  }
+}

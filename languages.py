@@ -12,9 +12,10 @@ timeline/state_log/summary 都是**语言无关**的，一份就能喂给所有�
     一份语言无关的理解 + 每个目标语言各一份 glossary。
 
 源语言固定为中文（这个 demo 的原文都是中文小说）。要新增一个目标语言：
-  1. 在下面 LANGUAGES 里加一条 Language；
-  2.（可选）放一份 seed_glossary_<code>.json 权威术语种子；
-  就这两步，main / 各 workflow / verify 全都从这里取配置，不再写死"英文"。
+  在下面 LANGUAGES 里加一条 Language 即可，main / 各 workflow / verify 全都从这里取配置。
+
+这里只放**语言级、和具体小说无关**的规则。某本书特有的东西（种子词表、成语表、
+本书译法备注、lint 修正映射）放进 profile 目录，见 novel_profile.py / examples/。
 """
 
 import re
@@ -90,8 +91,9 @@ class Language:
     zh_name: str             # 中文名，拼进给模型的中文 prompt（"中译英"里的"英"）
     endonym: str             # 语种约束里用的名字（"English" / "Arabic (العربية)"）
     chapter_label: str       # 章节标题里 "Chapter" 的对应词（Chapter / الفصل / Capítulo）
-    seed_file: str           # 该语言的权威术语表种子文件名（没有就留空串）
-    idiom_seed_file: str = ""  # 该语言的成语/惯用语种子文件名（没有就留空串）
+    seed_file: str = ""      # 权威术语表种子路径（由 profile 注入，语言级默认为空）
+    idiom_seed_file: str = ""  # 成语/惯用语种子路径（由 profile 注入）
+    lint_rules_file: str = ""  # lint 确认修正映射路径（由 profile 注入）
     max_sentence_words: int = 0  # 长句闸阈值（词数）；>此值的句子会被确定性拆分。0=关闭
     latin_script: bool = True # 目标语是否用拉丁字母。决定 lint 把"哪种脚本"当外来残留：
                               #   非拉丁(阿语)→ 残留拉丁(英文)是外来；拉丁(英/西)→ 反之
@@ -106,24 +108,16 @@ class Language:
 
 # ---------- 各语言特有的译法提示 ----------
 
-_EN_TRANSLATOR_NOTES = """- "火影"指动漫《火影忍者》这部作品时，译作 Naruto；只有指"火影"这个职位时才译 Hokage。
-- 穿越设定里的"原身/原主"指这具身体原来的主人，不要译成 predecessor（前任），
-  可译 the body's original owner 之类。
-- 例：背黑锅 → take the blame / be the scapegoat（不是 "bear a black pot"）；
+_EN_TRANSLATOR_NOTES = """- 例：背黑锅 → take the blame / be the scapegoat（不是 "bear a black pot"）；
       待价而沽 → hold out for a better offer；天无二日 → there can't be two suns."""
-
-_EN_TITLE_NOTES = """- 人物/术语必须用下面Memory里已确立的英文译法（如 大蛇丸→Orochimaru、猿飞日斩→Hiruzen Sarutobi）。"""
 
 _AR_TRANSLATOR_NOTES = """- 专有名词（人名/地名/招式）按阿拉伯语通行的音译习惯转写，并与 glossary 保持完全一致。
 - 阿拉伯语从右到左书写，但数字、章节序号照常保留。
 - 成语/惯用语/政治或网络用语：Memory 里若 idioms 已给出地道译法，一律直接沿用；
   没有的也要意译成阿拉伯语读者能懂的地道说法，绝不逐字直译。
-  例："十分有九分的不对劲"→"事情大有蹊跷"（不是"九成的缺陷"）；
-      "做大蛋糕"是"把总盘子做大"的经济比喻，不要字面译成"烤个大蛋糕"。
 - 原文玩"重音/词序/双关"时（如刻意强调某个词），阿拉伯语语序常和中文相反，
   务必保证译文内部自洽：前一句说"强调了X"、后一句就必须仍指向同一个 X，别因语序颠倒而自相矛盾。
-- 惯用话术要按"意图"译，不要按"字面动作"译。
-  例："丝滑小连招"指某人惯用的说话套路/开场白，不是武打招式，别译成"快速连击"。
+- 惯用话术要按"意图"译，不要按"字面动作"译（说话套路不是武打招式）。
 - 每句都要是完整合语法的阿拉伯语句子，不要留下缺主语/缺谓语的残句。
 - 长句控制：阿拉伯语容易用连接词 و 把句子越拖越长。中文一长句里含多个分句时，
   主动断成 2~3 个短句，别让一句连绵三四行不断句——读者读着累。"""
@@ -137,9 +131,7 @@ LANGUAGES: dict[str, Language] = {
         zh_name="英语",
         endonym="English",
         chapter_label="Chapter",
-        seed_file="seed_glossary.json",   # 保留旧文件名，向后兼容
         translator_notes=_EN_TRANSLATOR_NOTES,
-        title_notes=_EN_TITLE_NOTES,
         normalize_output=_strip_macrons,
     ),
     "ar": Language(
@@ -147,8 +139,6 @@ LANGUAGES: dict[str, Language] = {
         zh_name="阿拉伯语",
         endonym="Arabic (العربية)",
         chapter_label="الفصل",
-        seed_file="seed_glossary_ar.json",
-        idiom_seed_file="seed_idioms_ar.json",
         max_sentence_words=30,   # 阿语读者短句优先：打掉 >30 词的 run-on（实测这是长尾 ~0.6%）
         latin_script=False,      # 阿语非拉丁：残留英文/拉丁 token 才是外来
         rtl=True,
@@ -157,13 +147,12 @@ LANGUAGES: dict[str, Language] = {
         normalize_output=_identity,  # 阿拉伯文无罗马字长音符，不归一
     ),
     # 西班牙语插口：已登记好，随时可用 `--target-lang es` 启用。
-    # 要更好的一致性再补一份 seed_glossary_es.json 即可（没有也能跑，靠 Extractor 提议）。
+    # 要更好的一致性在 profile 里补一份西语种子词表即可（没有也能跑，靠 Extractor 提议）。
     "es": Language(
         code="es",
         zh_name="西班牙语",
         endonym="Spanish (Español)",
         chapter_label="Capítulo",
-        seed_file="seed_glossary_es.json",
         translator_notes="",
         title_notes="",
         normalize_output=_strip_macrons,   # 西语用拉丁字母，罗马字人名同样归一

@@ -14,6 +14,7 @@ main.py
 
 用法：
   python main.py --input chapters/my_novel.txt
+  python main.py --input chapters/my_novel.txt --profile examples/<book>   # 带本书的种子词表/译法备注
 
 对照实验（验证Memory到底有没有用）：
   python main.py --input chapters/my_novel.txt --ab-test
@@ -34,6 +35,7 @@ from languages import (
     find_long_sentences,
 )
 from llm_client import get_client, LLMClient
+from novel_profile import apply_profile
 from memory_store import MemoryStore
 from splitter import load_and_split
 from workflow_extractor import extract_memory
@@ -89,18 +91,26 @@ def main():
              "对小语种（如阿拉伯语）尤其有用；每章多一次强判官调用",
     )
     parser.add_argument(
+        "--profile",
+        default=None,
+        help="小说 profile 目录（含 profile.json：种子词表/成语表/本书译法备注/lint 映射），"
+             "如 examples/naruto。不传则只用语言级通用规则，glossary 全靠 Memory 逐章增长",
+    )
+    parser.add_argument(
         "--seed-glossary",
         default=None,
         help="权威术语表种子（中文->目标语），跑前注入Memory作为canonical译名；"
-             "默认按目标语言自动选（如 en→seed_glossary.json、ar→seed_glossary_ar.json）；传空字符串关闭",
+             "默认取 profile 里该语言的 seed_glossary；传空字符串关闭",
     )
     args = parser.parse_args()
 
-    lang = get_language(args.target_lang)
+    lang = apply_profile(get_language(args.target_lang), args.profile)
+    if args.profile:
+        print(f"[profile] {args.profile}")
     # 各语言译文分目录落盘，互不覆盖：translations/<lang>/chapter_XX.txt
     output_dir = os.path.join(args.output_dir, lang.code)
     qa_report_path = args.qa_report or f"qa_report_{lang.code}.json"
-    # 种子文件：命令行没显式给就用该语言在 languages.py 里声明的 seed_file。
+    # 种子文件：命令行没显式给就用 profile 里该语言的 seed_glossary。
     seed_glossary_path = args.seed_glossary if args.seed_glossary is not None else lang.seed_file
     os.makedirs(output_dir, exist_ok=True)
 
@@ -193,8 +203,8 @@ def main():
         title_out = lang.normalize(title_out)
 
         # 确定性 lint：自动修掉已确认的固定错误（方言/性数等，见 lint_<lang>.json），免费、不复发。
-        translated, nlint = apply_lint_fixes(translated, lang.code)
-        title_out, _ = apply_lint_fixes(title_out, lang.code)
+        translated, nlint = apply_lint_fixes(translated, lang)
+        title_out, _ = apply_lint_fixes(title_out, lang)
         if nlint:
             print(f"      [lint] 自动修正 {nlint} 处已知错误")
 

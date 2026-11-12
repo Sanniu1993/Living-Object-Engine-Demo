@@ -4,6 +4,21 @@
 
 ---
 
+## v1.12 — 小说相关配置剥离为 profile（准备开源）
+
+### 修改
+- 新增 `novel_profile.py` + `--profile <dir>`（`main.py` / `lint.py`）：种子词表、成语表、lint 修正映射、本书译法备注从引擎剥离，按书放进 `examples/<book>/profile.json`
+- `languages.py` 只保留语言级通用规则；删掉写死的火影/人名例子，`Language` 新增 `lint_rules_file`，种子路径默认为空、由 profile 注入
+- `lint.apply_fixes / load_rules` 改为接收 `Language`（读 `lang.lint_rules_file`），不再按 cwd 下 `lint_<lang>.json` 查找
+- 文件迁移：`seed_glossary*.json`、`seed_idioms_ar.json`、`lint_ar.json` → `examples/naruto/`（`seed_glossary.json` 改名 `seed_glossary_en.json`）；`ab_test_report.json`、`qa_report_ar.json` → `examples/naruto/results/`
+- README 重写开头：项目定位、局限、实验结论汇总、profile 用法；新增 MIT `LICENSE`
+
+### 注意
+- 跑原来那本书需显式加 `--profile examples/naruto`，否则不会注入种子词表/译法备注
+- `workflow_qa.py` 判官 prompt 里的白名单示例仍用这本书的人名（Hiruzen/Orochimaru），是 EXP-006 调好的，未改动以免影响已验证的判官行为
+
+---
+
 ## v1.11 — reasoning_effort 可配置（流畅度判官降本 ~85%）
 
 ### 修改

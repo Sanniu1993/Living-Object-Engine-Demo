@@ -1,6 +1,31 @@
 # Living Object Engine — MVP
 
-验证目标只有一个：**Memory能否跨越多次调用递增成长，并被下一次调用真正复用（而不是每次重新生成）**。翻译只是验证载体，不是产品本身。
+> **这是一个实验项目，不是生产级翻译工具。**
+> 验证目标只有一个：**Memory 能否跨越多次 LLM 调用递增成长，并被下一次调用真正复用（而不是每次重新生成）**。
+> 长篇网文翻译（中→英/阿/西）只是验证载体，不是产品本身。
+
+## 现状与局限（请先读）
+
+- **只在一部小说上验证过**：作者自测用的一本中文同人网文，约 40 章，中→英 / 中→阿。原文受版权保护，**不随仓库分发**；
+  那本书的种子词表、译法备注和实验结果放在 [`examples/naruto/`](examples/naruto/)，作为"一本书的 profile 长什么样"的参考。
+- 引擎本身和具体小说无关：书相关的东西都在 profile 里（`--profile`），不传 profile 也能跑任意中文小说，
+  只是没有种子词表，术语一致性全靠 Memory 逐章积累。**但换书后的效果没有验证过。**
+- 源语言固定中文；切章规则针对中文网文（"第N章" / 分隔线+编号）。
+- 依赖外部 LLM：翻译/抽取用 DeepSeek，判官用 GPT-5 系列（经 AIHubMix）。没有单元测试，没有成本控制以外的工程化。
+- 实验样本都很小（多为 2~30 章、单轮），结论见下表，都标了"能说明什么 / 不能说明什么"。
+
+## 主要发现（详见 [`docs/experiments/`](docs/experiments/)）
+
+| # | 问题 | 结论 |
+|---|---|---|
+| EXP-001 | Memory 有没有用（A/B） | 方向上支持，但 5 章单轮受随机性主导，**尚不能下定论** |
+| EXP-002 / 005 | 谁来当判官 | DeepSeek 做翻译够用，做 QA 判官基本失效；GPT-5 mini 植入错误召回 3/3 vs 0/3 |
+| EXP-003 | 种子词表 | 预置权威术语表把"一致地错"变成"一致地对"，5 章一次过 QA —— 上游修比事后兜底省 |
+| EXP-004 | prompt 译法规则 | 有明确映射的错误能修；需要语境判断的（同词多义）便宜模型只能概率性改善 |
+| EXP-007 | 扩到 30 章 | 有界上下文成立；暴露"判官漏译盲区"→ **能确定性判的别用 LLM**（正则闸互补） |
+| EXP-008 | 实体合并陷阱 | 往 Memory 写"合并"必须以源文证据为准，人工注入也会造成系统性污染 |
+| EXP-009 / 010 | 流畅度审校 | 一致性和流畅度是正交维度；小语种 L2 判官值得上 GPT-5（但要给足输出预算） |
+| EXP-011 | reasoning_effort | gpt-5@minimal 召回与 medium/high 持平，成本降 ~85% |
 
 ## 架构对应关系
 
@@ -27,13 +52,32 @@ cp .env.example .env
 # 编辑 .env，填入你的 DEEPSEEK_API_KEY（调试阶段默认用DeepSeek）
 ```
 
-把你的小说原文（单个txt，按"第一章/第1章/Chapter 1"，或"分隔线+编号"如 `------------` 换行 `001 标题` 分章）放进 `chapters/` 目录，比如 `chapters/my_novel.txt`。
+把你自己的中文小说原文（单个txt，按"第一章/第1章/Chapter 1"，或"分隔线+编号"如 `------------` 换行 `001 标题` 分章）放进 `chapters/` 目录，比如 `chapters/my_novel.txt`。
 
 ```bash
 python main.py --input chapters/my_novel.txt
 ```
 
 调试时只想跑前2章，加 `--limit 2`。
+
+### 一本书一个 profile（`--profile`）
+
+和具体小说绑定的东西不进引擎代码，放进一个 profile 目录：
+
+```
+examples/<book>/
+  profile.json            # 声明各语言用哪些文件、本书特有的译法备注
+  seed_glossary_en.json   # 可选：{中文术语: 译名}，跑前注入 Memory 作为权威译名
+  seed_idioms_ar.json     # 可选：{中文成语/梗: 地道说法}
+  lint_ar.json            # 可选：{"replace": {错: 对}}，确定性自动修正
+```
+
+```bash
+python main.py --input chapters/my_novel.txt --profile examples/my_book
+```
+
+`profile.json` 格式见 [`novel_profile.py`](novel_profile.py) 顶部注释，完整例子见 [`examples/naruto/profile.json`](examples/naruto/profile.json)。
+不传 `--profile` 时只用 `languages.py` 里语言级的通用规则。
 
 跑完后会生成：
 - `memory.json` —— 逐章成长的Memory
@@ -88,9 +132,9 @@ python main.py --input chapters/my_novel.txt --target-lang ar
 
 ### 加一门新语言（插口在 `languages.py`）
 
-新增语言只动一个文件：在 `languages.py` 的 `LANGUAGES` 里加一条 `Language`，声明语言名、章节标题词（Chapter/الفصل/Capítulo）、输出归一化（拉丁字母目标去罗马字长音符，其他用 identity）等。**可选**再放一份 `seed_glossary_<code>.json` 权威术语种子（没有也能跑，靠 Extractor 自动提议译名）。
+新增语言只动一个文件：在 `languages.py` 的 `LANGUAGES` 里加一条 `Language`，声明语言名、章节标题词（Chapter/الفصل/Capítulo）、输出归一化（拉丁字母目标去罗马字长音符，其他用 identity）等。某本书在该语言下的种子词表，**可选**地写进那本书的 profile（没有也能跑，靠 Extractor 自动提议译名）。
 
-西班牙语插口已登记好，直接 `--target-lang es` 即可跑；想要更稳的术语一致性，补一份 `seed_glossary_es.json`。阿拉伯语已附带 `seed_glossary_ar.json`（核心人名/地名/组织）。
+西班牙语插口已登记好，直接 `--target-lang es` 即可跑。
 
 > 注意：残留检测目前按"译文里是否残留中文"判漏译（源语言固定中文，目标 en/ar/es 都不是 CJK，成立）。若将来要加日语/韩语这类 CJK 目标，需在 `languages.py` 里换成按"源文特有片段"检测——那里留了说明。
 
@@ -140,3 +184,13 @@ QA_LLM_MODEL=gpt-4o
 | `prompts/<角色>/vN.txt` | prompt 版本快照。改 prompt 时新建 `vN+1.txt`，**不覆盖**旧版本 |
 
 约定：每次只做一个实验、一份记录、编号递增；诚实记录（包括"方向相反""样本太小不能下结论"——反例最值钱）；基准不要为了让数字好看而改。
+
+## 贡献 / 反馈
+
+欢迎拿你自己的小说建一个 profile 跑一跑，尤其想知道：换一本书、换一个题材后，Memory 复用和种子词表的结论还成不成立。
+发现问题请开 issue，附上跑的命令、章节数和模型配置。
+
+## License
+
+[MIT](LICENSE)。不包含任何小说原文；`examples/` 中的人名/术语仅作研究引用。
+

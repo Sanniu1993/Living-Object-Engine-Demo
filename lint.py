@@ -7,10 +7,10 @@ lint.py — 确定性译文体检（免费、每次都跑、结果稳定不抖�
 - 疑似人名污染：两个已知名字揉成一个（如 ساروتوبي 头 + أوروتشيمارو 尾 = ساروتشيمارو）
 
 这些收进 lint，判官只留给真正需要语感的活（语法/直译/矛盾）。
-lint_<lang>.json 的 replace 映射是一个"确认修正"的 Living Object：
+profile 里的 lint_<lang>.json（replace 映射）是一个"确认修正"的 Living Object：
 终校每发现一类新硬伤就加一条 wrong->right，以后每次自动根治、零成本、不复发。
 
-用法：python lint.py --lang ar [--fix]
+用法：python lint.py --lang ar --profile examples/naruto [--fix]
 """
 
 import argparse
@@ -18,7 +18,8 @@ import json
 import os
 import re
 
-from languages import get_language, find_untranslated_source
+from languages import Language, get_language, find_untranslated_source
+from novel_profile import apply_profile
 from memory_store import MemoryStore
 
 _LATIN_RE = re.compile(r"[A-Za-z]{2,}")          # 拉丁字母串
@@ -26,22 +27,18 @@ _ARABIC_RE = re.compile(r"[؀-ۿ]{2,}")  # 阿拉伯字母串
 _TOKEN_RE = re.compile(r"[^\s«».,،؛:!؟\"'()\[\]]+")
 
 
-def _rules_path(lang_code: str) -> str:
-    return f"lint_{lang_code}.json"
-
-
-def load_rules(lang_code: str) -> dict:
-    path = _rules_path(lang_code)
-    if os.path.exists(path):
+def load_rules(lang: Language) -> dict:
+    path = lang.lint_rules_file
+    if path and os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
 
 
-def apply_fixes(text: str, lang_code: str) -> tuple[str, int]:
+def apply_fixes(text: str, lang: Language) -> tuple[str, int]:
     """确定性替换：把 replace 映射（确认的 wrong->right）全改掉。返回 (新文本, 改动次数)。"""
     n = 0
-    for wrong, right in load_rules(lang_code).get("replace", {}).items():
+    for wrong, right in load_rules(lang).get("replace", {}).items():
         c = text.count(wrong)
         if c:
             text = text.replace(wrong, right)
@@ -197,7 +194,7 @@ def run_lint(text: str, memory: MemoryStore, lang) -> list[tuple]:
     typos = find_name_typos(text, memory, lang)
     if typos:
         findings.append(("疑似人名错拼", typos))
-    hit = [w for w in load_rules(lang.code).get("replace", {}) if w in text]
+    hit = [w for w in load_rules(lang).get("replace", {}) if w in text]
     if hit:
         findings.append(("已知错误短语(可--fix自动改)", hit))
     return findings
@@ -208,10 +205,11 @@ def main():
     parser.add_argument("--lang", default="ar")
     parser.add_argument("--memory-path", default="memory.json")
     parser.add_argument("--dir", default=None, help="译文目录，默认 translations/<lang>")
+    parser.add_argument("--profile", default=None, help="小说 profile 目录（提供 lint_<lang>.json），如 examples/naruto")
     parser.add_argument("--fix", action="store_true", help="对命中 replace 映射的地方自动替换并写回")
     args = parser.parse_args()
 
-    lang = get_language(args.lang)
+    lang = apply_profile(get_language(args.lang), args.profile)
     memory = MemoryStore(args.memory_path)
     d = args.dir or os.path.join("translations", lang.code)
     files = sorted(f for f in os.listdir(d) if f.startswith("chapter_") and f.endswith(".txt"))
@@ -221,7 +219,7 @@ def main():
         path = os.path.join(d, fn)
         text = open(path, encoding="utf-8").read()
         if args.fix:
-            text, n = apply_fixes(text, lang.code)
+            text, n = apply_fixes(text, lang)
             if n:
                 open(path, "w", encoding="utf-8").write(text)
                 print(f"{fn}: 自动修正 {n} 处")
